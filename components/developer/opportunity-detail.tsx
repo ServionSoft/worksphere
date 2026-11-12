@@ -1,0 +1,270 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { SectionCard } from "@/components/shared/section-card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useRequiredAuth } from "@/lib/auth-store";
+import { formatCurrency, formatDate } from "@/lib/format";
+import { useWorkspaceStore } from "@/lib/workspace-store";
+import { toast } from "sonner";
+
+export function OpportunityDetailPage({ opportunityId }: { opportunityId: string }) {
+  const { user } = useRequiredAuth();
+  const {
+    opportunities,
+    acceptFixedOpportunity,
+    submitQuotation,
+    saveOpportunity,
+    developers,
+  } = useWorkspaceStore();
+  const opp = opportunities.find((o) => o.id === opportunityId);
+  const profile = developers.find((d) => d.id === user.developerId);
+  const [quoteOpen, setQuoteOpen] = useState(false);
+  const [acceptOpen, setAcceptOpen] = useState(false);
+  const [price, setPrice] = useState("");
+  const [days, setDays] = useState("");
+  const [cover, setCover] = useState("");
+  const [question, setQuestion] = useState("");
+
+  if (!opp) {
+    return (
+      <div className="rounded-xl border border-dashed border-border px-6 py-20 text-center">
+        <p className="font-semibold">Opportunity not found</p>
+        <Button className="mt-4" render={<Link href="/developer/marketplace" />} nativeButton={false}>
+          Back to marketplace
+        </Button>
+      </div>
+    );
+  }
+
+  const verified = profile?.status === "verified";
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="rounded-xl border border-border bg-card px-5 py-5">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-2 mb-2"
+          render={<Link href="/developer/marketplace" />}
+          nativeButton={false}
+        >
+          <ArrowLeft data-icon="inline-start" />
+          Marketplace
+        </Button>
+        <h1 className="text-xl font-semibold tracking-tight">{opp.title}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {opp.projectName ?? "Independent task"} · Published by {opp.publishedBy}
+        </p>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {opp.skills.map((s) => (
+            <Badge key={s} variant="secondary">
+              {s}
+            </Badge>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {opp.pricing === "fixed" ? (
+            <Button
+              size="sm"
+              disabled={!verified || opp.status !== "open"}
+              onClick={() => setAcceptOpen(true)}
+            >
+              Accept fixed-price offer
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              disabled={!verified || opp.status !== "open"}
+              onClick={() => setQuoteOpen(true)}
+            >
+              Submit quotation
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              saveOpportunity(opp.id);
+              toast.success("Saved");
+            }}
+          >
+            Save
+          </Button>
+          {!verified ? (
+            <p className="text-xs text-amber-700">
+              Verification required for restricted assignments.
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        <SectionCard title="Description" className="xl:col-span-2">
+          <p className="text-sm leading-6 text-muted-foreground">{opp.description}</p>
+          <h3 className="mt-4 text-sm font-semibold">Scope</h3>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+            {opp.scope.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <h3 className="mt-4 text-sm font-semibold">Requirements</h3>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+            {opp.requirements.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <h3 className="mt-4 text-sm font-semibold">Deliverables</h3>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+            {opp.deliverables.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </SectionCard>
+
+        <div className="flex flex-col gap-4">
+          <SectionCard title="Commercials">
+            <Info
+              label="Budget"
+              value={`${formatCurrency(opp.budgetMin)} – ${formatCurrency(opp.budgetMax)}`}
+            />
+            <Info label="Pricing" value={opp.pricing} />
+            <Info label="Estimated duration" value={`${opp.estimatedDays} days`} />
+            <Info label="Deadline" value={formatDate(opp.deadline)} />
+            <Info label="Experience" value={opp.experienceLevel} />
+          </SectionCard>
+          <SectionCard title="Ask a question">
+            <Textarea
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="Clarification for the publisher..."
+            />
+            <Button
+              className="mt-2"
+              size="sm"
+              onClick={() => {
+                if (!question.trim()) return;
+                toast.success("Question sent to admin (demo)", {
+                  description: "Will sync when messaging backend is connected.",
+                });
+                setQuestion("");
+              }}
+            >
+              Send question
+            </Button>
+          </SectionCard>
+        </div>
+      </div>
+
+      <Dialog open={acceptOpen} onOpenChange={setAcceptOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm fixed-price acceptance</DialogTitle>
+            <DialogDescription>
+              Confirm scope, price {formatCurrency(opp.budgetMax)} and deadline{" "}
+              {formatDate(opp.deadline)}. Admin may still need to confirm assignment
+              in production.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAcceptOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                acceptFixedOpportunity(
+                  opp.id,
+                  user.developerId ?? "dev1",
+                  user.name
+                );
+                setAcceptOpen(false);
+                toast.success("Acceptance recorded", {
+                  description: "Assignment appears under My Assignments.",
+                });
+              }}
+            >
+              Confirm acceptance
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={quoteOpen} onOpenChange={setQuoteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Submit quotation</DialogTitle>
+            <DialogDescription>
+              Propose price, timeline and a short cover message.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <Input
+              type="number"
+              placeholder="Proposed price (USD)"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+            />
+            <Input
+              type="number"
+              placeholder="Estimated days"
+              value={days}
+              onChange={(e) => setDays(e.target.value)}
+            />
+            <Textarea
+              placeholder="Cover message / relevant experience"
+              value={cover}
+              onChange={(e) => setCover(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setQuoteOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!price || !days || !cover.trim()) {
+                  toast.error("Complete all quotation fields");
+                  return;
+                }
+                submitQuotation({
+                  opportunityId: opp.id,
+                  developerId: user.developerId ?? "dev1",
+                  developerName: user.name,
+                  price: Number(price),
+                  estimatedDays: Number(days),
+                  coverMessage: cover.trim(),
+                });
+                setQuoteOpen(false);
+                toast.success("Quotation submitted");
+              }}
+            >
+              Submit quotation
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="mb-3 last:mb-0">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-sm font-medium capitalize">{value}</p>
+    </div>
+  );
+}
