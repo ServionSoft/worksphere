@@ -1,10 +1,10 @@
-import { PlaceholderPage } from "@/components/shared/placeholder-page";
+import { RequireSession } from "@/components/auth/auth-guard";
+import { GlobalCalendar } from "@/components/admin/global-calendar";
 
 export default function CalendarPage() {
   return (
-    <PlaceholderPage
-      title="Calendar"
-      description="Schedule, meetings and due dates in one calendar view."
-    />
+    <RequireSession>
+      <GlobalCalendar />
+    </RequireSession>
   );
 }

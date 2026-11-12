@@ -51,7 +51,12 @@ export function ProjectCard({ project }: { project: Project }) {
           <span>PM · {project.managerName}</span>
           <span className="inline-flex items-center gap-1 tabular-nums">
             <CalendarDays className="size-3" />
-            {formatShortDate(project.dueDate)}
+            <span>
+              Deadline{" "}
+              <span className="font-medium text-foreground">
+                {formatShortDate(project.dueDate)}
+              </span>
+            </span>
           </span>
         </div>
       </article>

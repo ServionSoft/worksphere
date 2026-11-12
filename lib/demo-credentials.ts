@@ -10,6 +10,19 @@ export const DEMO_ACCOUNTS: Array<{
   user: SessionUser;
 }> = [
   {
+    email: "super@worksphere.demo",
+    password: DEMO_PASSWORD,
+    portal: "admin",
+    user: {
+      id: "su1",
+      name: "Sam Rivera",
+      email: "super@worksphere.demo",
+      role: "super_admin",
+      portal: "admin",
+      title: "Platform Super Admin",
+    },
+  },
+  {
     email: "admin@worksphere.demo",
     password: DEMO_PASSWORD,
     portal: "admin",

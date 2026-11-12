@@ -1,10 +1,10 @@
-import { PlaceholderPage } from "@/components/shared/placeholder-page";
+import { RequireSession } from "@/components/auth/auth-guard";
+import { GlobalTimeline } from "@/components/admin/global-timeline";
 
 export default function TimelinePage() {
   return (
-    <PlaceholderPage
-      title="Timeline & Gantt"
-      description="Cross-project timelines and dependency planning."
-    />
+    <RequireSession>
+      <GlobalTimeline />
+    </RequireSession>
   );
 }

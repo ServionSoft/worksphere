@@ -4,6 +4,7 @@ import { FileText, Link2, Package, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/shared/section-card";
 import { formatRelativeTime } from "@/lib/format";
+import { demoId } from "@/lib/demo-clock";
 import { currentUser } from "@/lib/mock-data";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import type { DocumentType } from "@/lib/types";
@@ -34,7 +35,7 @@ export function ProjectDocuments({ projectId }: ProjectDocumentsProps) {
   function handleUpload() {
     addDocument({
       projectId,
-      name: `Upload-${Date.now().toString().slice(-4)}.pdf`,
+      name: `Upload-${demoId("f")}.pdf`,
       type: "file",
       sizeLabel: "1.2 MB",
       uploadedBy: currentUser.name,

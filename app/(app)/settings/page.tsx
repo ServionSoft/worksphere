@@ -1,10 +1,10 @@
-import { PlaceholderPage } from "@/components/shared/placeholder-page";
+import { RequireSession } from "@/components/auth/auth-guard";
+import { WorkspaceSettings } from "@/components/admin/workspace-settings";
 
 export default function SettingsPage() {
   return (
-    <PlaceholderPage
-      title="Settings"
-      description="Workspace preferences, members and integrations."
-    />
+    <RequireSession>
+      <WorkspaceSettings />
+    </RequireSession>
   );
 }

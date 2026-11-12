@@ -6,14 +6,18 @@ import { AppHeader } from "@/components/layout/app-header";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useAuth } from "@/lib/auth-store";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const [collapsed, setCollapsed] = useLocalStorage(
     "worksphere.sidebar.collapsed",
     false
   );
   const [mobileOpen, setMobileOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+
+  if (!user) return children;
 
   return (
     <div className="flex h-svh overflow-hidden bg-background">

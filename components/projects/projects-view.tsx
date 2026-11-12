@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { LayoutGrid, List, Plus, Search } from "lucide-react";
+import { Archive, LayoutGrid, List, Pencil, Plus, Search } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -21,10 +22,11 @@ import { ProjectStatusBadge } from "@/components/shared/status-badge";
 import { PriorityBadge } from "@/components/shared/priority-badge";
 import { ProjectCard } from "@/components/projects/project-card";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
+import { EditProjectDialog } from "@/components/projects/edit-project-dialog";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { formatShortDate } from "@/lib/format";
 import { useWorkspaceStore } from "@/lib/workspace-store";
-import type { ProjectStatus } from "@/lib/types";
+import type { Project, ProjectStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const statusFilters: Array<{ label: string; value: "all" | ProjectStatus }> = [
@@ -39,8 +41,13 @@ const statusFilters: Array<{ label: string; value: "all" | ProjectStatus }> = [
 export function ProjectsView() {
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get("q") ?? "";
-  const { projects, searchQuery: globalQuery } = useWorkspaceStore();
+  const {
+    projects,
+    searchQuery: globalQuery,
+    archiveProject,
+  } = useWorkspaceStore();
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [view, setView] = useLocalStorage<"grid" | "table">(
     "worksphere.projects.view",
     "grid"
@@ -51,6 +58,7 @@ export function ProjectsView() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return projects.filter((project) => {
+      if (project.archived) return false;
       const matchesStatus = status === "all" || project.status === status;
       const matchesQuery =
         !q ||
@@ -60,6 +68,13 @@ export function ProjectsView() {
       return matchesStatus && matchesQuery;
     });
   }, [projects, query, status]);
+
+  function handleArchive(id: string, name: string) {
+    archiveProject(id);
+    toast.success("Project archived", {
+      description: `${name} moved to archive (demo).`,
+    });
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -123,7 +138,8 @@ export function ProjectsView() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Showing {filtered.length} of {projects.length} projects
+        Showing {filtered.length} of{" "}
+        {projects.filter((p) => !p.archived).length} projects
       </p>
 
       {view === "grid" ? (
@@ -144,7 +160,8 @@ export function ProjectsView() {
                   <TableHead>Status</TableHead>
                   <TableHead className="min-w-40">Progress</TableHead>
                   <TableHead>Priority</TableHead>
-                  <TableHead>Due</TableHead>
+                  <TableHead>Deadline</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -182,6 +199,26 @@ export function ProjectsView() {
                     <TableCell className="tabular-nums text-muted-foreground">
                       {formatShortDate(project.dueDate)}
                     </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditingProject(project)}
+                        >
+                          <Pencil data-icon="inline-start" />
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleArchive(project.id, project.name)}
+                        >
+                          <Archive data-icon="inline-start" />
+                          Archive
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -204,6 +241,13 @@ export function ProjectsView() {
       ) : null}
 
       <CreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <EditProjectDialog
+        project={editingProject}
+        open={Boolean(editingProject)}
+        onOpenChange={(open) => {
+          if (!open) setEditingProject(null);
+        }}
+      />
     </div>
   );
 }

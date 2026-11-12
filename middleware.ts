@@ -25,6 +25,8 @@ function isPublic(pathname: string) {
   return (
     pathname.startsWith("/login") ||
     pathname.startsWith("/access-denied") ||
+    pathname === "/developer/register" ||
+    pathname.startsWith("/developer/register/") ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico"
   );
@@ -32,6 +34,12 @@ function isPublic(pathname: string) {
 
 function requiredPortal(pathname: string): PortalHint | null {
   if (pathname.startsWith("/client")) return "client";
+  if (
+    pathname === "/developer/register" ||
+    pathname.startsWith("/developer/register/")
+  ) {
+    return null;
+  }
   if (pathname.startsWith("/developer")) return "developer";
   // Admin app routes (everything else app-facing)
   if (
@@ -45,9 +53,11 @@ function requiredPortal(pathname: string): PortalHint | null {
     pathname.startsWith("/team") ||
     pathname.startsWith("/clients") ||
     pathname.startsWith("/marketplace") ||
+    pathname.startsWith("/finance") ||
     pathname.startsWith("/ai") ||
     pathname.startsWith("/reports") ||
-    pathname.startsWith("/settings")
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/super-admin")
   ) {
     return "admin";
   }

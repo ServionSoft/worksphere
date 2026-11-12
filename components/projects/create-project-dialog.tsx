@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { clients, teamMembers } from "@/lib/mock-data";
+import { demoId } from "@/lib/demo-clock";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import type { Priority, ProjectStatus } from "@/lib/types";
 
@@ -34,11 +34,15 @@ export function CreateProjectDialog({
   open,
   onOpenChange,
 }: CreateProjectDialogProps) {
-  const { addProject } = useWorkspaceStore();
+  const { addProject, clients, team, workspace } = useWorkspaceStore();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [clientId, setClientId] = useState(clients[0].id);
-  const [managerId, setManagerId] = useState(teamMembers[0].id);
+  const [clientId, setClientId] = useState("");
+  const [managerId, setManagerId] = useState("");
+  const [budget, setBudget] = useState("50000");
+
+  const resolvedClientId = clientId || clients[0]?.id || "";
+  const resolvedManagerId = managerId || team[0]?.id || "";
   const [priority, setPriority] = useState<Priority>("medium");
   const [status, setStatus] = useState<ProjectStatus>("planning");
   const [dueDate, setDueDate] = useState("2026-06-30");
@@ -46,11 +50,12 @@ export function CreateProjectDialog({
   function reset() {
     setName("");
     setDescription("");
-    setClientId(clients[0].id);
-    setManagerId(teamMembers[0].id);
+    setClientId("");
+    setManagerId("");
     setPriority("medium");
     setStatus("planning");
     setDueDate("2026-06-30");
+    setBudget("50000");
   }
 
   function handleCreate() {
@@ -58,12 +63,16 @@ export function CreateProjectDialog({
       toast.error("Project name is required");
       return;
     }
-    const client = clients.find((c) => c.id === clientId) ?? clients[0];
-    const manager =
-      teamMembers.find((m) => m.id === managerId) ?? teamMembers[0];
+    const client = clients.find((c) => c.id === resolvedClientId) ?? clients[0];
+    const manager = team.find((m) => m.id === resolvedManagerId) ?? team[0];
+    if (!client || !manager) {
+      toast.error("Add a client and team member first");
+      return;
+    }
 
     addProject({
-      id: `p${Date.now()}`,
+      id: demoId("p"),
+      workspaceId: workspace.id,
       name: name.trim(),
       description: description.trim() || "Newly created project",
       clientId: client.id,
@@ -76,7 +85,7 @@ export function CreateProjectDialog({
       startDate: "2026-03-11",
       dueDate,
       teamSize: 1,
-      budget: 50000,
+      budget: Number(budget) || 50000,
       spent: 0,
       currency: "USD",
     });
@@ -125,7 +134,10 @@ export function CreateProjectDialog({
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-medium text-foreground">Client</span>
-              <Select value={clientId} onValueChange={(v) => v && setClientId(v)}>
+              <Select
+                value={resolvedClientId}
+                onValueChange={(v) => v && setClientId(v)}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue>
                     {(value) =>
@@ -150,20 +162,19 @@ export function CreateProjectDialog({
                 Project manager
               </span>
               <Select
-                value={managerId}
+                value={resolvedManagerId}
                 onValueChange={(v) => v && setManagerId(v)}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue>
                     {(value) =>
-                      teamMembers.find((m) => m.id === value)?.name ??
-                      "Select manager"
+                      team.find((m) => m.id === value)?.name ?? "Select manager"
                     }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    {teamMembers.map((member) => (
+                    {team.map((member) => (
                       <SelectItem key={member.id} value={member.id}>
                         {member.name}
                       </SelectItem>
@@ -231,16 +242,30 @@ export function CreateProjectDialog({
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-foreground" htmlFor="due-date">
-              Due date
-            </label>
-            <Input
-              id="due-date"
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-foreground" htmlFor="due-date">
+                Due date
+              </label>
+              <Input
+                id="due-date"
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-foreground" htmlFor="budget">
+                Budget (USD)
+              </label>
+              <Input
+                id="budget"
+                type="number"
+                min={0}
+                value={budget}
+                onChange={(e) => setBudget(e.target.value)}
+              />
+            </div>
           </div>
         </div>
 

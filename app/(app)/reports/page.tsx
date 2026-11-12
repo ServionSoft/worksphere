@@ -1,10 +1,10 @@
-import { PlaceholderPage } from "@/components/shared/placeholder-page";
+import { RequireSession } from "@/components/auth/auth-guard";
+import { ReportsAnalytics } from "@/components/admin/reports-analytics";
 
 export default function ReportsPage() {
   return (
-    <PlaceholderPage
-      title="Reports & Analytics"
-      description="Delivery health, utilization and portfolio reporting."
-    />
+    <RequireSession>
+      <ReportsAnalytics />
+    </RequireSession>
   );
 }

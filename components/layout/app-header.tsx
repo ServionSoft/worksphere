@@ -33,8 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { breadcrumbsForPath } from "@/components/layout/nav-config";
-import { notifications } from "@/lib/mock-data";
-import { initials } from "@/lib/format";
+import { formatRelativeTime, initials } from "@/lib/format";
 import { useRequiredAuth } from "@/lib/auth-store";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import { toast } from "sonner";
@@ -48,13 +47,22 @@ export function AppHeader({ onOpenMobileNav, onQuickCreate }: AppHeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useRequiredAuth();
-  const { searchQuery, setSearchQuery, projects } = useWorkspaceStore();
+  const {
+    searchQuery,
+    setSearchQuery,
+    projects,
+    portalNotifications,
+    markNotificationRead,
+  } = useWorkspaceStore();
   const projectMatch = pathname.match(/^\/projects\/([^/]+)/);
   const projectName = projectMatch
     ? projects.find((p) => p.id === projectMatch[1])?.name
     : undefined;
   const crumbs = breadcrumbsForPath(pathname, { projectName });
-  const unread = notifications.filter((n) => n.unread).length;
+  const notes = portalNotifications.filter(
+    (n) => n.portal === "admin" && (!n.userId || n.userId === user.id)
+  );
+  const unread = notes.filter((n) => !n.read).length;
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/95 px-3 backdrop-blur supports-backdrop-filter:bg-background/80 sm:px-5">
@@ -147,27 +155,44 @@ export function AppHeader({ onOpenMobileNav, onQuickCreate }: AppHeaderProps) {
                   {unread} unread
                 </span>
               </DropdownMenuLabel>
-              {notifications.map((item) => (
-                <DropdownMenuItem
-                  key={item.id}
-                  className="flex flex-col items-start gap-0.5 py-2"
-                  onClick={() => toast.message(item.title, { description: item.body })}
-                >
-                  <span className="flex w-full items-center justify-between gap-2">
-                    <span className="font-medium">{item.title}</span>
-                    {item.unread ? (
-                      <span className="size-1.5 rounded-full bg-primary" />
-                    ) : null}
-                  </span>
-                  <span className="text-xs text-muted-foreground">{item.body}</span>
-                  <span className="text-[11px] text-muted-foreground">
-                    {item.time}
-                  </span>
+              {notes.length === 0 ? (
+                <DropdownMenuItem disabled className="text-muted-foreground">
+                  No admin notifications
                 </DropdownMenuItem>
-              ))}
+              ) : (
+                notes.map((item) => (
+                  <DropdownMenuItem
+                    key={item.id}
+                    className="flex flex-col items-start gap-0.5 py-2"
+                    onClick={() => {
+                      markNotificationRead(item.id);
+                      if (item.href) {
+                        router.push(item.href);
+                      } else {
+                        toast.message(item.title, { description: item.body });
+                      }
+                    }}
+                  >
+                    <span className="flex w-full items-center justify-between gap-2">
+                      <span className="font-medium">{item.title}</span>
+                      {!item.read ? (
+                        <span className="size-1.5 rounded-full bg-primary" />
+                      ) : null}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {item.body}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {formatRelativeTime(item.createdAt)}
+                    </span>
+                  </DropdownMenuItem>
+                ))
+              )}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => toast("Opened notification center")}>
+            <DropdownMenuItem
+              onClick={() => toast("Opened notification center")}
+            >
               View all notifications
             </DropdownMenuItem>
           </DropdownMenuContent>

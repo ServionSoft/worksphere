@@ -1,3 +1,4 @@
+import { RequireSession } from "@/components/auth/auth-guard";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { ProjectDetailPage } from "@/components/projects/detail/project-detail-page";
@@ -13,7 +14,11 @@ async function ProjectDetailContent({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <ProjectDetailPage projectId={id} />;
+  return (
+    <RequireSession>
+      <ProjectDetailPage projectId={id} />
+    </RequireSession>
+  );
 }
 
 export default function ProjectPage({

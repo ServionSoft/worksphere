@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/shared/section-card";
 import { useRequiredAuth } from "@/lib/auth-store";
 import { formatCurrency, formatShortDate } from "@/lib/format";
+import { developerProjects } from "@/lib/portal-selectors";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 
 export function DeveloperDashboard() {
@@ -18,11 +19,13 @@ export function DeveloperDashboard() {
     earnings,
     portalNotifications,
     developers,
+    projects,
   } = useWorkspaceStore();
 
   const developerId = user.developerId ?? "dev1";
   const profile = developers.find((d) => d.id === developerId);
   const mine = assignments.filter((a) => a.developerId === developerId);
+  const myProjects = developerProjects(projects, assignments, user);
   const mySubs = workSubmissions.filter((w) =>
     mine.some((a) => a.id === w.assignmentId)
   );
@@ -80,18 +83,18 @@ export function DeveloperDashboard() {
           <div className="flex gap-2">
             <Button
               size="sm"
-              render={<Link href="/developer/marketplace" />}
+              render={<Link href="/developer/projects" />}
               nativeButton={false}
             >
-              Marketplace
+              My Projects
             </Button>
             <Button
               size="sm"
               variant="outline"
-              render={<Link href="/developer/register" />}
+              render={<Link href="/developer/marketplace" />}
               nativeButton={false}
             >
-              Onboarding
+              Marketplace
             </Button>
           </div>
         }
@@ -143,7 +146,20 @@ export function DeveloperDashboard() {
           </ul>
         </SectionCard>
 
-        <SectionCard title="Active assignments" bodyClassName="p-0">
+        <SectionCard
+          title="Active assignments"
+          action={
+            <Button
+              size="sm"
+              variant="ghost"
+              render={<Link href="/developer/my-tasks" />}
+              nativeButton={false}
+            >
+              View all
+            </Button>
+          }
+          bodyClassName="p-0"
+        >
           <ul className="divide-y divide-border">
             {mine.slice(0, 4).map((a) => (
               <li key={a.id} className="px-5 py-3">
@@ -161,12 +177,61 @@ export function DeveloperDashboard() {
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Due {formatShortDate(a.deadline)} · {a.status.replace("_", " ")}
+                  {a.projectId ? (
+                    <>
+                      {" · "}
+                      <Link
+                        href={`/developer/projects/${a.projectId}`}
+                        className="text-primary hover:underline"
+                      >
+                        {a.projectName ?? "Project"}
+                      </Link>
+                    </>
+                  ) : null}
                 </p>
               </li>
             ))}
           </ul>
         </SectionCard>
       </div>
+
+      {myProjects.length > 0 ? (
+        <SectionCard
+          title="My projects"
+          description="Timeline, milestones and tasks for assigned delivery work."
+          action={
+            <Button
+              size="sm"
+              variant="ghost"
+              render={<Link href="/developer/projects" />}
+              nativeButton={false}
+            >
+              Open
+            </Button>
+          }
+          bodyClassName="p-0"
+        >
+          <ul className="divide-y divide-border">
+            {myProjects.map((p) => (
+              <li key={p.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                <div className="min-w-0">
+                  <Link
+                    href={`/developer/projects/${p.id}`}
+                    className="text-sm font-medium hover:text-primary"
+                  >
+                    {p.name}
+                  </Link>
+                  <p className="text-xs text-muted-foreground">
+                    PM {p.managerName} · Due {formatShortDate(p.dueDate)} ·{" "}
+                    {p.progress}%
+                  </p>
+                </div>
+                <Progress value={p.progress} className="hidden w-28 sm:block" />
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-3">
         <SectionCard title="Recent submissions" bodyClassName="p-0">

@@ -35,6 +35,7 @@ export const clientNav: PortalNavItem[] = [
 export const developerNav: PortalNavItem[] = [
   { title: "Dashboard", href: "/developer/dashboard", icon: LayoutDashboard },
   { title: "Marketplace", href: "/developer/marketplace", icon: Store },
+  { title: "My Projects", href: "/developer/projects", icon: FolderKanban },
   { title: "My Assignments", href: "/developer/my-tasks", icon: Briefcase },
   { title: "Submissions", href: "/developer/submissions", icon: Upload },
   { title: "Earnings", href: "/developer/earnings", icon: Wallet },

@@ -94,9 +94,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    const existing = readSessionFromStorage();
-    setSession(existing);
+    /* eslint-disable react-hooks/set-state-in-effect -- demo client session rehydrate */
+    setSession(readSessionFromStorage());
     setHydrated(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   useEffect(() => {
@@ -104,8 +105,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const remaining = session.expiresAt - Date.now();
     if (remaining <= 0) {
       clearSessionStorage();
-      setSession(null);
-      return;
+      const t = window.setTimeout(() => setSession(null), 0);
+      return () => window.clearTimeout(t);
     }
     const timer = window.setTimeout(() => {
       clearSessionStorage();
@@ -223,4 +224,5 @@ export const portalHomes = {
   admin: "/",
   client: "/client/dashboard",
   developer: "/developer/dashboard",
+  super_admin: "/super-admin/dashboard",
 } as const;

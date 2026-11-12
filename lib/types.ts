@@ -41,18 +41,40 @@ export interface Workspace {
   name: string;
   plan: string;
   color: string;
+  companyName?: string;
+  seats?: number;
+  status?: "active" | "suspended";
 }
+
+export type ClientStatus = "active" | "inactive" | "prospect";
 
 export interface Client {
   id: string;
   name: string;
   industry: string;
+  workspaceId?: string;
+  contactName?: string;
+  email?: string;
+  phone?: string;
+  status?: ClientStatus;
+  notes?: string;
+}
+
+export interface TeamMember extends User {
+  workspaceId?: string;
+  title?: string;
+  active?: boolean;
+  permissionRole?:
+    | "tenant_admin"
+    | "project_manager"
+    | "internal_member";
 }
 
 export interface Project {
   id: string;
   name: string;
   description: string;
+  workspaceId: string;
   clientId: string;
   clientName: string;
   managerId: string;
@@ -66,6 +88,8 @@ export interface Project {
   budget: number;
   spent: number;
   currency: string;
+  archived?: boolean;
+  developerIds?: string[];
 }
 
 export interface Task {
@@ -131,6 +155,11 @@ export interface Submission {
   reviewNote?: string;
   relatedTaskId?: string | null;
   documentIds: string[];
+  /** Links admin Submission row to portal WorkSubmissionVersion */
+  workSubmissionId?: string | null;
+  assignmentId?: string | null;
+  authorizedForClient?: boolean;
+  reviewedAt?: string;
 }
 
 export interface Deadline {

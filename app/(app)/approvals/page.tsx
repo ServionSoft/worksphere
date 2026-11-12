@@ -1,10 +1,15 @@
-import { PlaceholderPage } from "@/components/shared/placeholder-page";
+import { RequireSession } from "@/components/auth/auth-guard";
+import type { Metadata } from "next";
+import { ApprovalsCenter } from "@/components/admin/approvals-center";
+
+export const metadata: Metadata = {
+  title: "Approvals",
+};
 
 export default function ApprovalsPage() {
   return (
-    <PlaceholderPage
-      title="Approvals"
-      description="Review submissions, sign-offs and gated deliverables."
-    />
+    <RequireSession>
+      <ApprovalsCenter />
+    </RequireSession>
   );
 }

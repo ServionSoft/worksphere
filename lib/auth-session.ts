@@ -89,7 +89,8 @@ function clearSessionCookie() {
   document.cookie = `${SESSION_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
 }
 
-export function portalHome(portal: PortalKind) {
+export function portalHome(portal: PortalKind, role?: AppRole) {
+  if (role === "super_admin") return "/super-admin/dashboard";
   if (portal === "client") return "/client/dashboard";
   if (portal === "developer") return "/developer/dashboard";
   return "/";
@@ -104,6 +105,7 @@ export function portalForPath(pathname: string): PortalKind | "public" {
   }
   if (pathname.startsWith("/client")) return "client";
   if (pathname.startsWith("/developer")) return "developer";
+  // /super-admin and tenant admin app share the admin portal cookie
   return "admin";
 }
 

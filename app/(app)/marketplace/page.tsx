@@ -1,10 +1,15 @@
-import { PlaceholderPage } from "@/components/shared/placeholder-page";
+import { RequireSession } from "@/components/auth/auth-guard";
+import type { Metadata } from "next";
+import { MarketplaceAdmin } from "@/components/admin/marketplace-admin";
+
+export const metadata: Metadata = {
+  title: "Developer Marketplace",
+};
 
 export default function MarketplacePage() {
   return (
-    <PlaceholderPage
-      title="Developer Marketplace"
-      description="Discover, vet and engage developers for project work."
-    />
+    <RequireSession>
+      <MarketplaceAdmin />
+    </RequireSession>
   );
 }

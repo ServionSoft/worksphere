@@ -1,3 +1,5 @@
+import { DEMO_NOW } from "@/lib/demo-clock";
+
 export function formatDate(value: string): string {
   return new Date(value).toLocaleDateString("en-US", {
     month: "short",
@@ -12,9 +14,6 @@ export function formatShortDate(value: string): string {
     day: "numeric",
   });
 }
-
-/** Fixed demo clock so prerender stays deterministic under cacheComponents. */
-const DEMO_NOW = new Date("2026-03-11T12:00:00Z");
 
 export function formatRelativeTime(value: string): string {
   const date = new Date(value);

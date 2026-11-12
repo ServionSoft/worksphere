@@ -59,7 +59,7 @@ export function ProjectOverviewTab({
           />
           <InfoRow
             icon={CalendarDays}
-            label="Due date"
+            label="Deadline"
             value={formatDate(project.dueDate)}
           />
           <div className="flex flex-col gap-1.5">

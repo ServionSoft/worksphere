@@ -58,7 +58,7 @@ export function ProjectsOverviewTable() {
               <TableHead className="min-w-36">Progress</TableHead>
               <TableHead>Priority</TableHead>
               <TableHead>Start</TableHead>
-              <TableHead>Due</TableHead>
+              <TableHead>Deadline</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

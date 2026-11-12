@@ -17,6 +17,7 @@ import { ProjectDocuments } from "@/components/projects/detail/project-documents
 import { ProjectApprovals } from "@/components/projects/detail/project-approvals";
 import { ProjectActivity } from "@/components/projects/detail/project-activity";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { demoId } from "@/lib/demo-clock";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import { toast } from "sonner";
@@ -65,7 +66,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
 
   function quickAddTask() {
     addTask({
-      id: `t${Date.now()}`,
+      id: demoId("t"),
       title: "Untitled task",
       description: "New work item",
       projectId: project!.id,
@@ -109,9 +110,12 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
               <PriorityBadge priority={project.priority} />
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              {project.clientName} · PM {project.managerName} ·{" "}
-              {formatDate(project.startDate)} – {formatDate(project.dueDate)} ·{" "}
-              {formatCurrency(project.spent, project.currency, true)} /{" "}
+              {project.clientName} · PM {project.managerName} · Start{" "}
+              {formatDate(project.startDate)} · Deadline{" "}
+              <span className="font-medium text-foreground">
+                {formatDate(project.dueDate)}
+              </span>{" "}
+              · {formatCurrency(project.spent, project.currency, true)} /{" "}
               {formatCurrency(project.budget, project.currency, true)}
             </p>
           </div>

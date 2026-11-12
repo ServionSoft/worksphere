@@ -1,10 +1,15 @@
-import { PlaceholderPage } from "@/components/shared/placeholder-page";
+import { RequireSession } from "@/components/auth/auth-guard";
+import type { Metadata } from "next";
+import { TeamManagement } from "@/components/admin/team-management";
+
+export const metadata: Metadata = {
+  title: "Team Members",
+};
 
 export default function TeamPage() {
   return (
-    <PlaceholderPage
-      title="Team Members"
-      description="Roles, capacity and teammate profiles."
-    />
+    <RequireSession>
+      <TeamManagement />
+    </RequireSession>
   );
 }

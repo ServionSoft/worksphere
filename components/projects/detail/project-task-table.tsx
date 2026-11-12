@@ -1,8 +1,17 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Plus, Search, ArrowUpDown } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  GitBranch,
+  Plus,
+  Search,
+  ArrowUpDown,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -13,6 +22,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -21,9 +38,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PriorityBadge } from "@/components/shared/priority-badge";
-import { TaskStatusBadge, taskLabels } from "@/components/shared/status-badge";
+import { taskLabels } from "@/components/shared/status-badge";
 import { formatShortDate } from "@/lib/format";
-import { teamMembers } from "@/lib/mock-data";
+import { demoId } from "@/lib/demo-clock";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import type { Priority, Project, Task, TaskStatus } from "@/lib/types";
 import { toast } from "sonner";
@@ -50,13 +67,16 @@ interface ProjectTaskTableProps {
 }
 
 export function ProjectTaskTable({ project }: ProjectTaskTableProps) {
-  const { tasks, updateTaskStatus, updateTask, addTask } = useWorkspaceStore();
+  const { tasks, updateTaskStatus, updateTask, addTask, deleteTask, team } =
+    useWorkspaceStore();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | TaskStatus>("all");
   const [priorityFilter, setPriorityFilter] = useState<"all" | Priority>("all");
   const [sortKey, setSortKey] = useState<SortKey>("dueDate");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [depsTask, setDepsTask] = useState<Task | null>(null);
+  const [depsDraft, setDepsDraft] = useState<string[]>([]);
 
   const projectTasks = useMemo(
     () => tasks.filter((t) => t.projectId === project.id),
@@ -102,9 +122,13 @@ export function ProjectTaskTable({ project }: ProjectTaskTableProps) {
   }
 
   function handleAddTask() {
-    const assignee = teamMembers[0];
+    const assignee = team[0];
+    if (!assignee) {
+      toast.error("No team members available");
+      return;
+    }
     addTask({
-      id: `t${Date.now()}`,
+      id: demoId("t"),
       title: "New task",
       description: "Describe the work item",
       projectId: project.id,
@@ -123,8 +147,97 @@ export function ProjectTaskTable({ project }: ProjectTaskTableProps) {
     toast.success("Task added");
   }
 
+  function handleAddSubtask(parent: Task) {
+    const assignee = team[0];
+    if (!assignee) {
+      toast.error("No team members available");
+      return;
+    }
+    const kids = subtasksOf(parent.id);
+    addTask({
+      id: demoId("t"),
+      title: "New subtask",
+      description: "Describe the subtask",
+      projectId: project.id,
+      projectName: project.name,
+      status: "todo",
+      priority: parent.priority,
+      startDate: parent.startDate,
+      dueDate: parent.dueDate,
+      assigneeId: assignee.id,
+      assigneeName: assignee.name,
+      parentId: parent.id,
+      dependsOn: [],
+      milestoneId: parent.milestoneId ?? null,
+      order: kids.length + 1,
+    });
+    setExpanded((prev) => ({ ...prev, [parent.id]: true }));
+    toast.success("Subtask added");
+  }
+
+  function handleDelete(task: Task) {
+    const isParent = !task.parentId;
+    const childCount = isParent ? subtasksOf(task.id).length : 0;
+    const message =
+      childCount > 0
+        ? `Delete "${task.title}" and its ${childCount} subtask(s)?`
+        : `Delete "${task.title}"?`;
+    if (!window.confirm(message)) return;
+    deleteTask(task.id);
+    toast.success("Task deleted", { description: task.title });
+  }
+
+  function handleTitleBlur(task: Task, nextTitle: string) {
+    const title = nextTitle.trim();
+    if (!title || title === task.title) return;
+    updateTask(task.id, { title });
+    toast.success("Title updated");
+  }
+
+  function handleAssigneeChange(taskId: string, memberId: string) {
+    const member = team.find((m) => m.id === memberId);
+    if (!member) return;
+    updateTask(taskId, {
+      assigneeId: member.id,
+      assigneeName: member.name,
+    });
+    toast.success("Assignee updated");
+  }
+
+  function openDepsEditor(task: Task) {
+    setDepsTask(task);
+    setDepsDraft([...task.dependsOn]);
+  }
+
+  function toggleDep(id: string, checked: boolean) {
+    setDepsDraft((prev) =>
+      checked ? [...prev, id] : prev.filter((x) => x !== id)
+    );
+  }
+
+  function saveDependencies() {
+    if (!depsTask) return;
+    const mutual = depsDraft.find((depId) => {
+      const other = projectTasks.find((t) => t.id === depId);
+      return other?.dependsOn.includes(depsTask.id);
+    });
+    if (mutual) {
+      const otherTitle =
+        projectTasks.find((t) => t.id === mutual)?.title ?? mutual;
+      toast.error("Circular dependency", {
+        description: `"${otherTitle}" already depends on this task.`,
+      });
+      return;
+    }
+    updateTask(depsTask.id, { dependsOn: depsDraft });
+    toast.success("Dependencies updated");
+    setDepsTask(null);
+  }
+
   function subtasksOf(parentId: string) {
-    return projectTasks.filter((t) => t.parentId === parentId);
+    return projectTasks
+      .filter((t) => t.parentId === parentId)
+      .sort((a, b) => a.order - b.order);
   }
 
   function dependencyLabel(task: Task) {
@@ -133,6 +246,151 @@ export function ProjectTaskTable({ project }: ProjectTaskTableProps) {
       .map((id) => projectTasks.find((t) => t.id === id)?.title ?? id)
       .join(", ");
   }
+
+  function siblingCandidates(task: Task) {
+    if (task.parentId) {
+      return projectTasks.filter(
+        (t) => t.parentId === task.parentId && t.id !== task.id
+      );
+    }
+    return projectTasks.filter((t) => !t.parentId && t.id !== task.id);
+  }
+
+  function renderTaskRow(task: Task, opts: { isSubtask?: boolean; kids?: Task[]; open?: boolean }) {
+    const { isSubtask = false, kids = [], open = false } = opts;
+    return (
+      <TableRow key={task.id} className={isSubtask ? "bg-muted/20" : undefined}>
+        <TableCell>
+          {!isSubtask && kids.length ? (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() =>
+                setExpanded((prev) => ({
+                  ...prev,
+                  [task.id]: !prev[task.id],
+                }))
+              }
+              aria-label="Toggle subtasks"
+            >
+              {open ? <ChevronDown /> : <ChevronRight />}
+            </Button>
+          ) : null}
+        </TableCell>
+        <TableCell className={isSubtask ? "pl-8" : undefined}>
+          <div className="flex items-center gap-1.5">
+            {isSubtask ? (
+              <span className="text-muted-foreground">↳</span>
+            ) : null}
+            <Input
+              defaultValue={task.title}
+              key={`${task.id}-${task.title}`}
+              className="h-8 border-transparent bg-transparent px-1.5 font-medium shadow-none focus-visible:border-input focus-visible:bg-background"
+              onBlur={(e) => handleTitleBlur(task, e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+              aria-label={isSubtask ? "Subtask title" : "Task title"}
+            />
+          </div>
+        </TableCell>
+        <TableCell>
+          <Select
+            value={task.status}
+            onValueChange={(v) => {
+              if (!v) return;
+              updateTaskStatus(task.id, v as TaskStatus);
+            }}
+          >
+            <SelectTrigger size="sm" className="min-w-28">
+              <SelectValue>
+                {(v) => (v ? taskLabels[v as TaskStatus] : "Status")}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {statuses.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {taskLabels[s]}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </TableCell>
+        <TableCell>
+          <PriorityBadge priority={task.priority} />
+        </TableCell>
+        <TableCell>
+          <Select
+            value={task.assigneeId}
+            onValueChange={(v) => {
+              if (!v) return;
+              handleAssigneeChange(task.id, v);
+            }}
+          >
+            <SelectTrigger size="sm" className="min-w-32">
+              <SelectValue>
+                {(v) => team.find((m) => m.id === v)?.name ?? "Assignee"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {team.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </TableCell>
+        <TableCell className="tabular-nums text-muted-foreground">
+          {formatShortDate(task.dueDate)}
+        </TableCell>
+        <TableCell className="max-w-48 truncate text-xs text-muted-foreground">
+          {dependencyLabel(task)}
+        </TableCell>
+        <TableCell className="text-right">
+          <div className="flex justify-end gap-1">
+            {!isSubtask ? (
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                onClick={() => handleAddSubtask(task)}
+                aria-label="Add subtask"
+                title="Add subtask"
+              >
+                <Plus />
+              </Button>
+            ) : null}
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              onClick={() => openDepsEditor(task)}
+              aria-label="Edit dependencies"
+              title="Edit dependencies"
+            >
+              <GitBranch />
+            </Button>
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              onClick={() => handleDelete(task)}
+              aria-label="Delete task"
+              title="Delete"
+            >
+              <Trash2 />
+            </Button>
+          </div>
+        </TableCell>
+      </TableRow>
+    );
+  }
+
+  const depCandidates = depsTask ? siblingCandidates(depsTask) : [];
 
   return (
     <div className="flex flex-col gap-3">
@@ -230,124 +488,20 @@ export function ProjectTaskTable({ project }: ProjectTaskTableProps) {
                   />
                 </TableHead>
                 <TableHead>Depends on</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {parents.map((task) => {
                 const kids = subtasksOf(task.id);
-                const open = expanded[task.id];
+                const open = Boolean(expanded[task.id]);
                 return (
                   <Fragment key={task.id}>
-                    <TableRow>
-                      <TableCell>
-                        {kids.length ? (
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={() =>
-                              setExpanded((prev) => ({
-                                ...prev,
-                                [task.id]: !prev[task.id],
-                              }))
-                            }
-                            aria-label="Toggle subtasks"
-                          >
-                            {open ? <ChevronDown /> : <ChevronRight />}
-                          </Button>
-                        ) : null}
-                      </TableCell>
-                      <TableCell className="font-medium">{task.title}</TableCell>
-                      <TableCell>
-                        <Select
-                          value={task.status}
-                          onValueChange={(v) => {
-                            if (!v) return;
-                            updateTaskStatus(task.id, v as TaskStatus);
-                          }}
-                        >
-                          <SelectTrigger size="sm" className="min-w-28">
-                            <SelectValue>
-                              {(v) =>
-                                v ? taskLabels[v as TaskStatus] : "Status"
-                              }
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              {statuses.map((s) => (
-                                <SelectItem key={s} value={s}>
-                                  {taskLabels[s]}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        <PriorityBadge priority={task.priority} />
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={task.assigneeId}
-                          onValueChange={(v) => {
-                            if (!v) return;
-                            const member = teamMembers.find((m) => m.id === v);
-                            if (!member) return;
-                            updateTask(task.id, {
-                              assigneeId: member.id,
-                              assigneeName: member.name,
-                            });
-                            toast.success("Assignee updated");
-                          }}
-                        >
-                          <SelectTrigger size="sm" className="min-w-32">
-                            <SelectValue>
-                              {(v) =>
-                                teamMembers.find((m) => m.id === v)?.name ??
-                                "Assignee"
-                              }
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              {teamMembers.map((m) => (
-                                <SelectItem key={m.id} value={m.id}>
-                                  {m.name}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell className="tabular-nums text-muted-foreground">
-                        {formatShortDate(task.dueDate)}
-                      </TableCell>
-                      <TableCell className="max-w-48 truncate text-xs text-muted-foreground">
-                        {dependencyLabel(task)}
-                      </TableCell>
-                    </TableRow>
+                    {renderTaskRow(task, { kids, open })}
                     {open
-                      ? kids.map((sub) => (
-                          <TableRow key={sub.id} className="bg-muted/20">
-                            <TableCell />
-                            <TableCell className="pl-8 text-sm text-muted-foreground">
-                              ↳ {sub.title}
-                            </TableCell>
-                            <TableCell>
-                              <TaskStatusBadge status={sub.status} />
-                            </TableCell>
-                            <TableCell>
-                              <PriorityBadge priority={sub.priority} />
-                            </TableCell>
-                            <TableCell>{sub.assigneeName}</TableCell>
-                            <TableCell className="tabular-nums text-muted-foreground">
-                              {formatShortDate(sub.dueDate)}
-                            </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">
-                              {dependencyLabel(sub)}
-                            </TableCell>
-                          </TableRow>
-                        ))
+                      ? kids.map((sub) =>
+                          renderTaskRow(sub, { isSubtask: true })
+                        )
                       : null}
                   </Fragment>
                 );
@@ -355,7 +509,7 @@ export function ProjectTaskTable({ project }: ProjectTaskTableProps) {
               {parents.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={8}
                     className="h-24 text-center text-muted-foreground"
                   >
                     No tasks match your filters.
@@ -366,6 +520,62 @@ export function ProjectTaskTable({ project }: ProjectTaskTableProps) {
           </Table>
         </div>
       </div>
+
+      <Dialog
+        open={Boolean(depsTask)}
+        onOpenChange={(open) => {
+          if (!open) setDepsTask(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Dependencies</DialogTitle>
+            <DialogDescription>
+              Choose sibling tasks that must finish before{" "}
+              <span className="font-medium text-foreground">
+                {depsTask?.title}
+              </span>
+              .
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex max-h-64 flex-col gap-2 overflow-y-auto py-1">
+            {depCandidates.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No sibling tasks available.
+              </p>
+            ) : (
+              depCandidates.map((candidate) => {
+                const checked = depsDraft.includes(candidate.id);
+                return (
+                  <label
+                    key={candidate.id}
+                    className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-muted/40"
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(value) =>
+                        toggleDep(candidate.id, value === true)
+                      }
+                    />
+                    <span className="min-w-0 flex-1 truncate">
+                      {candidate.title}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {taskLabels[candidate.status]}
+                    </span>
+                  </label>
+                );
+              })
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDepsTask(null)}>
+              Cancel
+            </Button>
+            <Button onClick={saveDependencies}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -19,14 +19,37 @@ interface ProjectApprovalsProps {
 }
 
 export function ProjectApprovals({ projectId }: ProjectApprovalsProps) {
-  const { submissions, updateSubmissionStatus, addSubmission } =
-    useWorkspaceStore();
+  const {
+    submissions,
+    updateSubmissionStatus,
+    addSubmission,
+    authorizeClientReview,
+    authorizeSubmissionForClient,
+  } = useWorkspaceStore();
   const items = submissions.filter((s) => s.projectId === projectId);
   const [notes, setNotes] = useState<Record<string, string>>({});
 
   function review(id: string, status: "approved" | "rejected", title: string) {
     updateSubmissionStatus(id, status, notes[id] || undefined);
-    toast.success(`Submission ${status}`, { description: title });
+    toast.success(`Internal review: ${status}`, {
+      description:
+        status === "approved"
+          ? `${title} — still needs explicit client authorization`
+          : title,
+    });
+  }
+
+  function authorize(item: (typeof items)[number]) {
+    if (item.status !== "approved") {
+      toast.error("Approve internally before authorizing the client");
+      return;
+    }
+    if (item.workSubmissionId) {
+      authorizeClientReview(item.workSubmissionId, notes[item.id]);
+    } else {
+      authorizeSubmissionForClient(item.id, notes[item.id]);
+    }
+    toast.success("Authorized for client review", { description: item.title });
   }
 
   function createSubmission() {
@@ -37,6 +60,7 @@ export function ProjectApprovals({ projectId }: ProjectApprovalsProps) {
       submittedBy: currentUser.name,
       status: "submitted",
       documentIds: [],
+      authorizedForClient: false,
     });
     toast.success("Submission created");
   }
@@ -57,6 +81,9 @@ export function ProjectApprovals({ projectId }: ProjectApprovalsProps) {
           action={<SubmissionStatusBadge status={item.status} />}
         >
           <p className="text-sm text-muted-foreground">{item.description}</p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Client authorized: {item.authorizedForClient ? "Yes" : "No"}
+          </p>
 
           {item.reviewNote ? (
             <p className="mt-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
@@ -79,9 +106,7 @@ export function ProjectApprovals({ projectId }: ProjectApprovalsProps) {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() =>
-                    updateSubmissionStatus(item.id, "in_review")
-                  }
+                  onClick={() => updateSubmissionStatus(item.id, "in_review")}
                 >
                   Mark in review
                 </Button>
@@ -89,21 +114,41 @@ export function ProjectApprovals({ projectId }: ProjectApprovalsProps) {
                   size="sm"
                   onClick={() => review(item.id, "approved", item.title)}
                 >
-                  Approve
+                  Approve internally
                 </Button>
                 <Button
                   size="sm"
                   variant="destructive"
                   onClick={() => review(item.id, "rejected", item.title)}
                 >
-                  Reject
+                  Request revision
                 </Button>
               </div>
             </div>
           ) : (
-            <p className="mt-3 text-xs text-muted-foreground">
-              Status: {submissionLabels[item.status]}
-            </p>
+            <div className="mt-3 flex flex-col gap-2">
+              <p className="text-xs text-muted-foreground">
+                Status: {submissionLabels[item.status]}
+              </p>
+              {item.status === "approved" && !item.authorizedForClient ? (
+                <div className="flex flex-col gap-2">
+                  <Textarea
+                    placeholder="Note for client authorization..."
+                    value={notes[item.id] ?? ""}
+                    onChange={(e) =>
+                      setNotes((prev) => ({
+                        ...prev,
+                        [item.id]: e.target.value,
+                      }))
+                    }
+                    className="min-h-16"
+                  />
+                  <Button size="sm" onClick={() => authorize(item)}>
+                    Authorize for client
+                  </Button>
+                </div>
+              ) : null}
+            </div>
           )}
         </SectionCard>
       ))}

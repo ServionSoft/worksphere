@@ -34,6 +34,12 @@ export function ClientApprovalsPage() {
     return workSubmissions.filter((w) => {
       if (!w.projectId || !ids.includes(w.projectId)) return false;
       if (!w.requiresClientApproval) return false;
+      const decided =
+        w.clientApprovalStatus === "approved" ||
+        w.clientApprovalStatus === "revision_requested" ||
+        w.clientApprovalStatus === "rejected";
+      // Pending items require explicit authorization; history stays visible after revoke.
+      if (!w.authorizedForClient && !decided) return false;
       if (filter === "all") return true;
       return w.clientApprovalStatus === filter;
     });

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { RequireSession } from "@/components/auth/auth-guard";
 import { ProjectsView } from "@/components/projects/projects-view";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -27,7 +28,9 @@ function ProjectsFallback() {
 export default function ProjectsPage() {
   return (
     <Suspense fallback={<ProjectsFallback />}>
-      <ProjectsView />
+      <RequireSession>
+        <ProjectsView />
+      </RequireSession>
     </Suspense>
   );
 }

@@ -43,11 +43,14 @@ export function ClientProjectDetail({ projectId }: { projectId: string }) {
   );
   const projectMilestones = milestones.filter((m) => m.projectId === projectId);
   const projectDocs = documents.filter((d) => d.projectId === projectId);
-  const approvals = workSubmissions.filter(
-    (w) =>
-      w.projectId === projectId &&
-      w.requiresClientApproval
-  );
+  const approvals = workSubmissions.filter((w) => {
+    if (w.projectId !== projectId || !w.requiresClientApproval) return false;
+    const decided =
+      w.clientApprovalStatus === "approved" ||
+      w.clientApprovalStatus === "revision_requested" ||
+      w.clientApprovalStatus === "rejected";
+    return w.authorizedForClient || decided;
+  });
   const thread = threads.find(
     (t) => t.projectId === projectId && t.visibility === "client"
   );

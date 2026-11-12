@@ -1,22 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+
+function readStorage<T>(key: string, initialValue: T): T {
+  if (typeof window === "undefined") return initialValue;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw != null) return JSON.parse(raw) as T;
+  } catch {
+    // ignore malformed storage
+  }
+  return initialValue;
+}
 
 export function useLocalStorage<T>(key: string, initialValue: T) {
-  const [value, setValue] = useState<T>(initialValue);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(key);
-      if (raw != null) {
-        setValue(JSON.parse(raw) as T);
-      }
-    } catch {
-      // ignore malformed storage
-    }
-    setHydrated(true);
-  }, [key]);
+  const [value, setValue] = useState<T>(() => readStorage(key, initialValue));
 
   const setStoredValue = useCallback(
     (next: T | ((prev: T) => T)) => {
@@ -34,5 +32,5 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
     [key]
   );
 
-  return [value, setStoredValue, hydrated] as const;
+  return [value, setStoredValue, true] as const;
 }

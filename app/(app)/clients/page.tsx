@@ -1,10 +1,15 @@
-import { PlaceholderPage } from "@/components/shared/placeholder-page";
+import { RequireSession } from "@/components/auth/auth-guard";
+import type { Metadata } from "next";
+import { ClientsManagement } from "@/components/admin/clients-management";
+
+export const metadata: Metadata = {
+  title: "Clients",
+};
 
 export default function ClientsPage() {
   return (
-    <PlaceholderPage
-      title="Clients"
-      description="Client accounts, contacts and engagement history."
-    />
+    <RequireSession>
+      <ClientsManagement />
+    </RequireSession>
   );
 }

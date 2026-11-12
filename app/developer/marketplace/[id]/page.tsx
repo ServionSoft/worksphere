@@ -1,3 +1,4 @@
+import { RequireSession } from "@/components/auth/auth-guard";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { OpportunityDetailPage } from "@/components/developer/opportunity-detail";
@@ -7,7 +8,11 @@ export const metadata: Metadata = { title: "Opportunity" };
 
 async function Content({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <OpportunityDetailPage opportunityId={id} />;
+  return (
+    <RequireSession>
+      <OpportunityDetailPage opportunityId={id} />
+    </RequireSession>
+  );
 }
 
 export default function Page({ params }: { params: Promise<{ id: string }> }) {

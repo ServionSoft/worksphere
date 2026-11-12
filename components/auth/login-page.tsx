@@ -90,16 +90,25 @@ export function LoginPage() {
       const next = searchParams.get("next");
       const safeNext =
         next && next.startsWith("/") && !next.startsWith("//") ? next : null;
-      router.replace(safeNext ?? portalHome(result.user.portal));
+      router.replace(
+        safeNext ?? portalHome(result.user.portal, result.user.role)
+      );
     } finally {
       setSubmitting(false);
     }
   }
 
-  function fillDemo(kind: PortalKind) {
-    const account = DEMO_ACCOUNTS.find((a) => a.portal === kind);
+  function fillDemo(kind: PortalKind, email?: string) {
+    const account =
+      (email
+        ? DEMO_ACCOUNTS.find((a) => a.email === email)
+        : null) ??
+      DEMO_ACCOUNTS.find(
+        (a) => a.portal === kind && a.user.role !== "super_admin"
+      ) ??
+      DEMO_ACCOUNTS.find((a) => a.portal === kind);
     if (!account) return;
-    setPortal(kind);
+    setPortal(account.portal);
     setEmail(account.email);
     setPassword(DEMO_PASSWORD);
     setError(null);
@@ -271,6 +280,18 @@ export function LoginPage() {
                   "Sign in"
                 )}
               </Button>
+
+              {portal === "developer" ? (
+                <p className="text-center text-xs text-muted-foreground">
+                  New to the developer portal?{" "}
+                  <Link
+                    href="/developer/register"
+                    className="font-medium text-primary hover:underline"
+                  >
+                    Create an account
+                  </Link>
+                </p>
+              ) : null}
             </form>
 
             <div className="mt-5 rounded-xl border border-dashed border-border bg-muted/30 p-3">
@@ -287,10 +308,12 @@ export function LoginPage() {
                     type="button"
                     size="xs"
                     variant="outline"
-                    onClick={() => fillDemo(account.portal)}
+                    onClick={() => fillDemo(account.portal, account.email)}
                     disabled={submitting}
                   >
-                    {account.portal}
+                    {account.user.role === "super_admin"
+                      ? "super admin"
+                      : account.portal}
                   </Button>
                 ))}
               </div>

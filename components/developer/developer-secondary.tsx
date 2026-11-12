@@ -1,18 +1,122 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/shared/section-card";
+import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useRequiredAuth } from "@/lib/auth-store";
+import { DEMO_TS, demoId } from "@/lib/demo-clock";
 import { formatCurrency, formatDate, formatShortDate } from "@/lib/format";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import type { DeveloperProfile } from "@/lib/portal-types";
 import { toast } from "sonner";
+
+const CV_MAX_BYTES = 5 * 1024 * 1024;
+const CV_ACCEPT = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+];
+
+type CvMeta = NonNullable<DeveloperProfile["cvMeta"]>;
+
+function validateCvFile(file: File): string | null {
+  if (!CV_ACCEPT.includes(file.type) && !/\.(pdf|doc|docx)$/i.test(file.name)) {
+    return "CV must be a PDF or Word document";
+  }
+  if (file.size <= 0 || file.size > CV_MAX_BYTES) {
+    return "CV must be between 1 byte and 5 MB";
+  }
+  return null;
+}
+
+function CvMetaField({
+  value,
+  onChange,
+}: {
+  value: CvMeta | null | undefined;
+  onChange: (next: CvMeta | null) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function onFile(file: File | undefined) {
+    if (!file) return;
+    const error = validateCvFile(file);
+    if (error) {
+      toast.error(error);
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+    onChange({
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type || "application/octet-stream",
+      selectedAt: DEMO_TS,
+    });
+    toast.success("CV metadata saved locally", {
+      description: "Demo only — file bytes are not uploaded to cloud storage.",
+    });
+  }
+
+  return (
+    <div className="rounded-lg border border-border px-3 py-3">
+      <p className="text-xs font-medium">CV (metadata only)</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        PDF or Word · max 5 MB · stored as local demo metadata, not cloud storage.
+      </p>
+      {value ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">{value.fileName}</Badge>
+          <span className="text-xs text-muted-foreground">
+            {(value.fileSize / 1024).toFixed(1)} KB
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => inputRef.current?.click()}
+          >
+            Replace
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              onChange(null);
+              if (inputRef.current) inputRef.current.value = "";
+            }}
+          >
+            Remove
+          </Button>
+        </div>
+      ) : (
+        <Button
+          type="button"
+          className="mt-2"
+          size="sm"
+          variant="outline"
+          onClick={() => inputRef.current?.click()}
+        >
+          Select CV
+        </Button>
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        className="hidden"
+        onChange={(e) => onFile(e.target.files?.[0])}
+      />
+    </div>
+  );
+}
 
 export function DeveloperSubmissionsPage() {
   const { user } = useRequiredAuth();
@@ -70,7 +174,8 @@ export function DeveloperSubmissionsPage() {
 
 export function DeveloperEarningsPage() {
   const { user } = useRequiredAuth();
-  const { earnings } = useWorkspaceStore();
+  const { earnings, developers } = useWorkspaceStore();
+  const profile = developers.find((d) => d.id === user.developerId);
   const mine = earnings.filter((e) => e.developerId === user.developerId);
   const paid = mine.filter((e) => e.status === "paid").reduce((s, e) => s + e.amount, 0);
   const pending = mine
@@ -91,6 +196,27 @@ export function DeveloperEarningsPage() {
         <Stat label="Approved" value={formatCurrency(approved)} />
         <Stat label="Pending" value={formatCurrency(pending)} />
       </div>
+
+      <SectionCard title="Performance">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Stat label="Rating" value={profile ? String(profile.rating) : "—"} />
+          <Stat
+            label="On-time %"
+            value={profile ? `${profile.onTimePercent}%` : "—"}
+          />
+          <Stat
+            label="Completed assignments"
+            value={profile ? String(profile.completedAssignments) : "—"}
+          />
+        </div>
+        {profile ? (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Lifetime earnings on profile:{" "}
+            {formatCurrency(profile.totalEarnings)}
+          </p>
+        ) : null}
+      </SectionCard>
+
       <SectionCard title="Payment history" bodyClassName="p-0">
         <ul className="divide-y divide-border">
           {mine.map((e) => (
@@ -101,15 +227,26 @@ export function DeveloperEarningsPage() {
               <div>
                 <p className="text-sm font-medium">{e.assignmentTitle}</p>
                 <p className="text-xs text-muted-foreground">
-                  {e.status} · {formatDate(e.earnedAt)}
+                  Status: <span className="capitalize">{e.status}</span> ·{" "}
+                  {formatDate(e.earnedAt)}
                   {e.paidAt ? ` · paid ${formatDate(e.paidAt)}` : ""}
                 </p>
               </div>
-              <p className="font-semibold tabular-nums">
-                {formatCurrency(e.amount, e.currency)}
-              </p>
+              <div className="text-right">
+                <p className="font-semibold tabular-nums">
+                  {formatCurrency(e.amount, e.currency)}
+                </p>
+                <Badge variant="outline" className="mt-1 capitalize">
+                  {e.status}
+                </Badge>
+              </div>
             </li>
           ))}
+          {mine.length === 0 ? (
+            <li className="px-5 py-10 text-center text-sm text-muted-foreground">
+              No payment records yet.
+            </li>
+          ) : null}
         </ul>
       </SectionCard>
     </div>
@@ -182,6 +319,12 @@ export function DeveloperProfilePage() {
               onChange={(v) => setForm((p) => ({ ...p, portfolioUrl: v }))}
             />
           </div>
+          <div className="mt-3">
+            <CvMetaField
+              value={form.cvMeta}
+              onChange={(next) => setForm((p) => ({ ...p, cvMeta: next }))}
+            />
+          </div>
           <label className="mt-3 block text-xs font-medium">Bio</label>
           <Textarea
             className="mt-1"
@@ -204,13 +347,89 @@ export function DeveloperProfilePage() {
 }
 
 export function DeveloperRegisterPage() {
+  const router = useRouter();
   const { registerDeveloper } = useWorkspaceStore();
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [title, setTitle] = useState("");
+  const [phone, setPhone] = useState("");
+  const [country, setCountry] = useState("");
+  const [portfolioUrl, setPortfolioUrl] = useState("");
+  const [githubUrl, setGithubUrl] = useState("");
+  const [cvMeta, setCvMeta] = useState<CvMeta | null>(null);
   const [skills, setSkills] = useState("React, TypeScript");
   const [bio, setBio] = useState("");
+
+  function validateStep(current: number): boolean {
+    if (current === 1) {
+      if (!name.trim() || !email.trim()) {
+        toast.error("Name and email are required");
+        return false;
+      }
+    }
+    if (current === 2) {
+      if (!title.trim() || !phone.trim() || !country.trim()) {
+        toast.error("Title, phone, and country are required");
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function handleSubmit() {
+    if (!name.trim() || !email.trim()) {
+      toast.error("Name and email are required");
+      setStep(1);
+      return;
+    }
+    if (!title.trim() || !phone.trim() || !country.trim()) {
+      toast.error("Title, phone, and country are required");
+      setStep(2);
+      return;
+    }
+    if (!skills.trim()) {
+      toast.error("Add at least one skill");
+      setStep(3);
+      return;
+    }
+    if (!bio.trim()) {
+      toast.error("Bio is required");
+      setStep(5);
+      return;
+    }
+
+    registerDeveloper({
+      id: demoId("dev"),
+      userId: demoId("du"),
+      name: name.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      country: country.trim(),
+      title: title.trim(),
+      skills: skills
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      experienceYears: 1,
+      hourlyRate: 50,
+      availability: "available",
+      portfolioUrl: portfolioUrl.trim() || undefined,
+      githubUrl: githubUrl.trim() || undefined,
+      cvMeta,
+      bio: bio.trim(),
+      status: "pending_verification",
+      rating: 0,
+      completedAssignments: 0,
+      onTimePercent: 0,
+      totalEarnings: 0,
+    });
+    toast.success("Verification request submitted", {
+      description:
+        "Sign in after an administrator verifies your profile to access the marketplace.",
+    });
+    router.push("/login?portal=developer");
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -228,8 +447,8 @@ export function DeveloperRegisterPage() {
         {step === 2 ? (
           <div className="grid max-w-lg gap-3">
             <Field label="Professional title" value={title} onChange={setTitle} />
-            <Field label="Phone" value="+1 555 0100" onChange={() => undefined} />
-            <Field label="Country" value="United States" onChange={() => undefined} />
+            <Field label="Phone" value={phone} onChange={setPhone} />
+            <Field label="Country" value={country} onChange={setCountry} />
           </div>
         ) : null}
         {step === 3 ? (
@@ -237,18 +456,13 @@ export function DeveloperRegisterPage() {
         ) : null}
         {step === 4 ? (
           <div className="grid max-w-lg gap-3">
-            <Field label="Portfolio URL" value="https://" onChange={() => undefined} />
-            <Field label="GitHub URL" value="https://github.com/" onChange={() => undefined} />
-            <Button
-              variant="outline"
-              onClick={() =>
-                toast.message("CV upload simulated", {
-                  description: "Metadata only — not stored in cloud.",
-                })
-              }
-            >
-              Upload CV
-            </Button>
+            <Field
+              label="Portfolio URL"
+              value={portfolioUrl}
+              onChange={setPortfolioUrl}
+            />
+            <Field label="GitHub URL" value={githubUrl} onChange={setGithubUrl} />
+            <CvMetaField value={cvMeta} onChange={setCvMeta} />
           </div>
         ) : null}
         {step === 5 ? (
@@ -261,7 +475,7 @@ export function DeveloperRegisterPage() {
         {step === 6 ? (
           <p className="text-sm text-muted-foreground">
             Submit verification request. An administrator must approve before restricted
-            marketplace access is granted.
+            marketplace access is granted. You will then sign in via the developer portal.
           </p>
         ) : null}
 
@@ -274,34 +488,16 @@ export function DeveloperRegisterPage() {
             Back
           </Button>
           {step < 6 ? (
-            <Button onClick={() => setStep((s) => s + 1)}>Continue</Button>
-          ) : (
             <Button
               onClick={() => {
-                registerDeveloper({
-                  id: `dev${Date.now()}`,
-                  userId: `du${Date.now()}`,
-                  name: name || "New Developer",
-                  email: email || "dev@example.com",
-                  phone: "",
-                  country: "Unknown",
-                  title: title || "Developer",
-                  skills: skills.split(",").map((s) => s.trim()).filter(Boolean),
-                  experienceYears: 1,
-                  hourlyRate: 50,
-                  availability: "available",
-                  bio: bio || "New developer profile",
-                  status: "pending_verification",
-                  rating: 0,
-                  completedAssignments: 0,
-                  onTimePercent: 0,
-                  totalEarnings: 0,
-                });
-                toast.success("Verification request submitted");
+                if (!validateStep(step)) return;
+                setStep((s) => s + 1);
               }}
             >
-              Submit for verification
+              Continue
             </Button>
+          ) : (
+            <Button onClick={handleSubmit}>Submit for verification</Button>
           )}
         </div>
       </SectionCard>
@@ -312,7 +508,9 @@ export function DeveloperRegisterPage() {
 export function DeveloperMessagesPage() {
   const { user } = useRequiredAuth();
   const { threads, messages, sendMessage } = useWorkspaceStore();
-  const mine = threads.filter((t) => t.visibility === "developer");
+  const mine = threads.filter(
+    (t) => t.visibility === "developer" || t.visibility === "internal"
+  );
   const [activeId, setActiveId] = useState(mine[0]?.id ?? "");
   const [body, setBody] = useState("");
   const threadMessages = messages
@@ -357,12 +555,13 @@ export function DeveloperMessagesPage() {
               className="w-fit"
               onClick={() => {
                 if (!activeId || !body.trim()) return;
+                const active = mine.find((t) => t.id === activeId);
                 sendMessage({
                   threadId: activeId,
                   authorId: user.id,
                   authorName: user.name,
                   body: body.trim(),
-                  visibility: "developer",
+                  visibility: active?.visibility ?? "developer",
                 });
                 setBody("");
               }}
@@ -409,22 +608,34 @@ export function DeveloperNotificationsPage() {
 
 export function DeveloperSettingsPage() {
   const { user } = useRequiredAuth();
+  const [displayName, setDisplayName] = useLocalStorage(
+    "worksphere.developer.displayName",
+    user.name
+  );
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title="Settings" description="Developer account preferences (demo)." />
       <SectionCard title="Account">
-        <p className="text-sm">{user.name}</p>
-        <p className="text-sm text-muted-foreground">{user.email}</p>
-        <Button
-          className="mt-3"
-          onClick={() =>
-            toast.success("Settings saved locally", {
-              description: "Backend sync is not connected yet.",
-            })
-          }
-        >
-          Save
-        </Button>
+        <div className="flex max-w-md flex-col gap-3">
+          <label className="text-xs font-medium">Display name preference</label>
+          <Input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+          />
+          <p className="text-sm text-muted-foreground">{user.email}</p>
+          <Button
+            className="w-fit"
+            onClick={() => {
+              setDisplayName(displayName.trim() || user.name);
+              toast.success("Settings saved locally", {
+                description: "Display name preference stored in this browser.",
+              });
+            }}
+          >
+            Save
+          </Button>
+        </div>
       </SectionCard>
     </div>
   );

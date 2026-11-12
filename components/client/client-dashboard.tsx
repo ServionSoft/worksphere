@@ -35,7 +35,11 @@ export function ClientDashboard() {
   const myMilestones = clientMilestones(milestones, ids).slice(0, 4);
   const pending = clientPendingApprovals(workSubmissions, ids);
   const docs = clientDocuments(documents, ids).slice(0, 4);
-  const clientThreads = threads.filter((t) => t.visibility === "client");
+  const clientThreads = threads.filter(
+    (t) =>
+      t.visibility === "client" &&
+      (!t.projectId || ids.includes(t.projectId))
+  );
   const feed = activity.filter((a) => a.projectId && ids.includes(a.projectId)).slice(0, 5);
 
   const kpis = [

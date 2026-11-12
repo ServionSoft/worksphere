@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PanelLeftClose, PanelLeft } from "lucide-react";
+import { PanelLeftClose, PanelLeft, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { WorkSphereLogo } from "@/components/layout/logo";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { mainNav } from "@/components/layout/nav-config";
+import { useAuth } from "@/lib/auth-store";
 import { cn } from "@/lib/utils";
 
 interface AppSidebarProps {
@@ -25,6 +26,8 @@ export function AppSidebar({
   onNavigate,
 }: AppSidebarProps) {
   const pathname = usePathname();
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super_admin";
 
   return (
     <aside
@@ -100,6 +103,20 @@ export function AppSidebar({
 
       {collapsed ? (
         <div className="border-t border-sidebar-border p-2">
+          {isSuperAdmin ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="mb-1 w-full"
+              render={<Link href="/super-admin/dashboard" />}
+              nativeButton={false}
+              onClick={onNavigate}
+              aria-label="Super Admin"
+              title="Super Admin"
+            >
+              <Shield />
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="icon"
@@ -112,6 +129,19 @@ export function AppSidebar({
         </div>
       ) : (
         <div className="border-t border-sidebar-border px-3 py-3">
+          {isSuperAdmin ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="mb-2 w-full justify-start"
+              render={<Link href="/super-admin/dashboard" />}
+              nativeButton={false}
+              onClick={onNavigate}
+            >
+              <Shield data-icon="inline-start" />
+              Super Admin
+            </Button>
+          ) : null}
           <p className="text-[11px] text-muted-foreground">
             Apex Digital · Enterprise
           </p>

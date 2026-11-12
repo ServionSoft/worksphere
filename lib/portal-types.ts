@@ -23,12 +23,15 @@ export type OpportunityStatus = "open" | "closed" | "filled";
 export type ExperienceLevel = "junior" | "mid" | "senior" | "lead";
 
 export type AssignmentStatus =
+  | "pending_confirmation"
   | "not_started"
   | "in_progress"
   | "submitted"
   | "revision_requested"
   | "approved"
   | "completed";
+
+export type OpportunityVisibility = "public" | "private" | "direct";
 
 export type QuotationStatus =
   | "pending"
@@ -81,6 +84,14 @@ export interface DeveloperProfile {
   completedAssignments: number;
   onTimePercent: number;
   totalEarnings: number;
+  workspaceId?: string;
+  /** Local demo CV metadata only — never uploaded to cloud storage. */
+  cvMeta?: {
+    fileName: string;
+    fileSize: number;
+    fileType: string;
+    selectedAt: string;
+  } | null;
 }
 
 export interface MarketplaceOpportunity {
@@ -101,11 +112,14 @@ export interface MarketplaceOpportunity {
   deadline: string;
   experienceLevel: ExperienceLevel;
   status: OpportunityStatus;
+  visibility: OpportunityVisibility;
+  workspaceId?: string;
   projectId?: string;
   projectName?: string;
   publishedBy: string;
   publishedAt: string;
   attachments: string[];
+  invitedDeveloperIds?: string[];
 }
 
 export interface Quotation {
@@ -136,6 +150,14 @@ export interface DeveloperAssignment {
   progress: number;
   checklist: Array<{ id: string; label: string; done: boolean }>;
   requirements: string;
+  priceLocked?: boolean;
+  deadlineLocked?: boolean;
+  quotationId?: string;
+  extensionRequest?: {
+    requestedDeadline: string;
+    reason: string;
+    status: "pending" | "approved" | "rejected";
+  };
 }
 
 export interface WorkSubmissionVersion {
@@ -149,12 +171,20 @@ export interface WorkSubmissionVersion {
   deployUrl?: string;
   files: string[];
   screenshots: string[];
+  testingNotes?: string;
   submittedAt: string;
   submittedBy: string;
   status: SubmissionStatus;
   revisionNotes?: string;
   requiresClientApproval: boolean;
+  /** Only pending after admin authorizes client review */
   clientApprovalStatus: ClientApprovalStatus;
+  authorizedForClient: boolean;
+  internalReviewerName?: string;
+  internalReviewedAt?: string;
+  internalReviewNote?: string;
+  clientReviewerName?: string;
+  clientReviewedAt?: string;
   milestoneId?: string;
 }
 
@@ -215,6 +245,8 @@ export interface PortalNotification {
   id: string;
   portal: PortalKind;
   userId: string;
+  /** Demo tenant scope — filtered when switching workspaces. */
+  workspaceId: string;
   title: string;
   body: string;
   createdAt: string;

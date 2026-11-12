@@ -1,3 +1,4 @@
+import { RequireSession } from "@/components/auth/auth-guard";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { AssignmentDetailPage } from "@/components/developer/assignment-detail";
@@ -7,7 +8,11 @@ export const metadata: Metadata = { title: "Assignment" };
 
 async function Content({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <AssignmentDetailPage assignmentId={id} />;
+  return (
+    <RequireSession>
+      <AssignmentDetailPage assignmentId={id} />
+    </RequireSession>
+  );
 }
 
 export default function Page({ params }: { params: Promise<{ id: string }> }) {

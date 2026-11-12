@@ -1,5 +1,10 @@
 "use client";
 
+import { useState } from "react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
@@ -9,11 +14,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { SectionCard } from "@/components/shared/section-card";
 import {
   MilestoneStatusBadge,
   milestoneLabels,
 } from "@/components/shared/milestone-badge";
+import { DEMO_NOW_ISO, demoId } from "@/lib/demo-clock";
 import { formatDate } from "@/lib/format";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import type { Milestone, MilestoneStatus } from "@/lib/types";
@@ -30,12 +44,102 @@ interface ProjectMilestonesProps {
   projectId: string;
 }
 
+interface MilestoneFormState {
+  title: string;
+  description: string;
+  dueDate: string;
+  status: MilestoneStatus;
+  deliverables: string;
+  progress: string;
+}
+
+const emptyForm: MilestoneFormState = {
+  title: "",
+  description: "",
+  dueDate: DEMO_NOW_ISO.slice(0, 10),
+  status: "upcoming",
+  deliverables: "",
+  progress: "0",
+};
+
 export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
-  const { milestones, updateMilestoneStatus } = useWorkspaceStore();
+  const {
+    milestones,
+    addMilestone,
+    updateMilestone,
+    updateMilestoneStatus,
+    deleteMilestone,
+  } = useWorkspaceStore();
   const items = milestones.filter((m) => m.projectId === projectId);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<MilestoneFormState>(emptyForm);
+
+  function openCreate() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setDialogOpen(true);
+  }
+
+  function openEdit(milestone: Milestone) {
+    setEditingId(milestone.id);
+    setForm({
+      title: milestone.title,
+      description: milestone.description,
+      dueDate: milestone.dueDate.slice(0, 10),
+      status: milestone.status,
+      deliverables: milestone.deliverables.join("\n"),
+      progress: String(milestone.progress),
+    });
+    setDialogOpen(true);
+  }
+
+  function saveMilestone() {
+    if (!form.title.trim()) {
+      toast.error("Title is required");
+      return;
+    }
+    const deliverables = form.deliverables
+      .split("\n")
+      .map((d) => d.trim())
+      .filter(Boolean);
+    const progress = Math.min(100, Math.max(0, Number(form.progress) || 0));
+
+    if (editingId) {
+      updateMilestone(editingId, {
+        title: form.title.trim(),
+        description: form.description.trim(),
+        dueDate: form.dueDate,
+        status: form.status,
+        deliverables,
+        progress: form.status === "completed" ? 100 : progress,
+      });
+      toast.success("Milestone updated");
+    } else {
+      addMilestone({
+        id: demoId("m"),
+        projectId,
+        title: form.title.trim(),
+        description: form.description.trim(),
+        dueDate: form.dueDate,
+        status: form.status,
+        deliverables,
+        progress: form.status === "completed" ? 100 : progress,
+      });
+      toast.success("Milestone added");
+    }
+    setDialogOpen(false);
+  }
 
   return (
-    <div className="grid gap-3">
+    <div className="flex flex-col gap-3">
+      <div className="flex justify-end">
+        <Button size="sm" onClick={openCreate}>
+          <Plus data-icon="inline-start" />
+          Add milestone
+        </Button>
+      </div>
+
       {items.map((milestone) => (
         <MilestoneCard
           key={milestone.id}
@@ -46,15 +150,127 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
               description: `${milestone.title} → ${milestoneLabels[status]}`,
             });
           }}
+          onEdit={() => openEdit(milestone)}
+          onDelete={() => {
+            deleteMilestone(milestone.id);
+            toast.success("Milestone deleted", {
+              description: milestone.title,
+            });
+          }}
         />
       ))}
+
       {items.length === 0 ? (
         <SectionCard title="Milestones" description="No milestones for this project">
           <p className="text-sm text-muted-foreground">
-            Milestones will appear here once planned.
+            Add the first milestone to start tracking delivery checkpoints.
           </p>
         </SectionCard>
       ) : null}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingId ? "Edit milestone" : "Add milestone"}
+            </DialogTitle>
+            <DialogDescription>
+              Track delivery checkpoints for this project.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <div>
+              <label className="text-xs font-medium">Title</label>
+              <Input
+                className="mt-1"
+                value={form.title}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, title: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium">Description</label>
+              <Textarea
+                className="mt-1"
+                value={form.description}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, description: e.target.value }))
+                }
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-xs font-medium">Due date</label>
+                <Input
+                  className="mt-1"
+                  type="date"
+                  value={form.dueDate}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, dueDate: e.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium">Progress %</label>
+                <Input
+                  className="mt-1"
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={form.progress}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, progress: e.target.value }))
+                  }
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium">Status</label>
+              <Select
+                value={form.status}
+                onValueChange={(v) =>
+                  typeof v === "string" &&
+                  setForm((p) => ({ ...p, status: v as MilestoneStatus }))
+                }
+              >
+                <SelectTrigger className="mt-1 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {statuses.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {milestoneLabels[s]}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-medium">
+                Deliverables (one per line)
+              </label>
+              <Textarea
+                className="mt-1"
+                value={form.deliverables}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, deliverables: e.target.value }))
+                }
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={saveMilestone}>
+              {editingId ? "Save changes" : "Create milestone"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -62,15 +278,39 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
 function MilestoneCard({
   milestone,
   onStatusChange,
+  onEdit,
+  onDelete,
 }: {
   milestone: Milestone;
   onStatusChange: (status: MilestoneStatus) => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
   return (
     <SectionCard
       title={milestone.title}
       description={`Due ${formatDate(milestone.dueDate)}`}
-      action={<MilestoneStatusBadge status={milestone.status} />}
+      action={
+        <div className="flex items-center gap-1.5">
+          <MilestoneStatusBadge status={milestone.status} />
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={onEdit}
+            aria-label="Edit milestone"
+          >
+            <Pencil />
+          </Button>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={onDelete}
+            aria-label="Delete milestone"
+          >
+            <Trash2 />
+          </Button>
+        </div>
+      }
     >
       <p className="text-sm text-muted-foreground">{milestone.description}</p>
 
@@ -93,6 +333,9 @@ function MilestoneCard({
               {item}
             </li>
           ))}
+          {milestone.deliverables.length === 0 ? (
+            <li className="text-sm text-muted-foreground">No deliverables listed.</li>
+          ) : null}
         </ul>
       </div>
 

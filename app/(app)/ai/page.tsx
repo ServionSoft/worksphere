@@ -1,10 +1,10 @@
-import { PlaceholderPage } from "@/components/shared/placeholder-page";
+import { RequireSession } from "@/components/auth/auth-guard";
+import { AiAssistant } from "@/components/admin/ai-assistant";
 
 export default function AiPage() {
   return (
-    <PlaceholderPage
-      title="AI Assistant"
-      description="Ask WorkSphere AI for summaries, plans and risk signals."
-    />
+    <RequireSession>
+      <AiAssistant />
+    </RequireSession>
   );
 }

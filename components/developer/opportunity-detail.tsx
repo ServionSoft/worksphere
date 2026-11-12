@@ -25,13 +25,24 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
   const { user } = useRequiredAuth();
   const {
     opportunities,
+    assignments,
     acceptFixedOpportunity,
     submitQuotation,
     saveOpportunity,
     developers,
+    createThread,
+    sendMessage,
   } = useWorkspaceStore();
   const opp = opportunities.find((o) => o.id === opportunityId);
   const profile = developers.find((d) => d.id === user.developerId);
+  const myAssignment = assignments.find(
+    (a) =>
+      a.opportunityId === opportunityId && a.developerId === user.developerId
+  );
+  const pendingConfirmation = myAssignment?.status === "pending_confirmation";
+  const workUnlocked =
+    myAssignment != null &&
+    myAssignment.status !== "pending_confirmation";
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [acceptOpen, setAcceptOpen] = useState(false);
   const [price, setPrice] = useState("");
@@ -51,9 +62,37 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
   }
 
   const verified = profile?.status === "verified";
+  const canApply = verified && opp.status === "open" && !myAssignment;
 
   return (
     <div className="flex flex-col gap-5">
+      {pendingConfirmation ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-semibold">Waiting for admin confirmation</p>
+          <p className="mt-1 text-amber-800">
+            Your acceptance is recorded. Work stays locked until an administrator
+            confirms the assignment.
+          </p>
+        </div>
+      ) : null}
+
+      {workUnlocked && myAssignment ? (
+        <div className="rounded-xl border border-border bg-card px-4 py-3 text-sm">
+          <p className="font-medium">Assignment confirmed</p>
+          <p className="mt-1 text-muted-foreground">
+            You can start work from My Assignments.
+          </p>
+          <Button
+            className="mt-2"
+            size="sm"
+            render={<Link href={`/developer/tasks/${myAssignment.id}`} />}
+            nativeButton={false}
+          >
+            Open assignment
+          </Button>
+        </div>
+      ) : null}
+
       <div className="rounded-xl border border-border bg-card px-5 py-5">
         <Button
           variant="ghost"
@@ -80,7 +119,7 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
           {opp.pricing === "fixed" ? (
             <Button
               size="sm"
-              disabled={!verified || opp.status !== "open"}
+              disabled={!canApply}
               onClick={() => setAcceptOpen(true)}
             >
               Accept fixed-price offer
@@ -88,7 +127,7 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
           ) : (
             <Button
               size="sm"
-              disabled={!verified || opp.status !== "open"}
+              disabled={!canApply}
               onClick={() => setQuoteOpen(true)}
             >
               Submit quotation
@@ -98,7 +137,7 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
             size="sm"
             variant="outline"
             onClick={() => {
-              saveOpportunity(opp.id);
+              saveOpportunity(opp.id, user.developerId ?? "dev1");
               toast.success("Saved");
             }}
           >
@@ -107,6 +146,11 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
           {!verified ? (
             <p className="text-xs text-amber-700">
               Verification required for restricted assignments.
+            </p>
+          ) : null}
+          {pendingConfirmation ? (
+            <p className="w-full text-xs text-amber-700">
+              Work submission unlocks after admin confirmation (not_started+).
             </p>
           ) : null}
         </div>
@@ -156,17 +200,39 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
               className="mt-2"
               size="sm"
               onClick={() => {
-                if (!question.trim()) return;
-                toast.success("Question sent to admin (demo)", {
-                  description: "Will sync when messaging backend is connected.",
+                const body = question.trim();
+                if (!body) return;
+                const threadId = createThread({
+                  subject: `Question: ${opp.title}`,
+                  projectId: opp.projectId,
+                  projectName: opp.projectName,
+                  participants: [user.name, "Admin"],
+                  visibility: "internal",
+                });
+                sendMessage({
+                  threadId,
+                  projectId: opp.projectId,
+                  authorId: user.id,
+                  authorName: user.name,
+                  body,
+                  visibility: "internal",
                 });
                 setQuestion("");
+                toast.success("Question sent to admin", {
+                  description: (
+                    <Link
+                      href="/developer/messages"
+                      className="underline underline-offset-2"
+                    >
+                      Open Messages
+                    </Link>
+                  ),
+                });
               }}
             >
               Send question
             </Button>
-          </SectionCard>
-        </div>
+          </SectionCard>        </div>
       </div>
 
       <Dialog open={acceptOpen} onOpenChange={setAcceptOpen}>
@@ -175,8 +241,8 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
             <DialogTitle>Confirm fixed-price acceptance</DialogTitle>
             <DialogDescription>
               Confirm scope, price {formatCurrency(opp.budgetMax)} and deadline{" "}
-              {formatDate(opp.deadline)}. Admin may still need to confirm assignment
-              in production.
+              {formatDate(opp.deadline)}. Admin must confirm the assignment before
+              work can begin.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -192,7 +258,8 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
                 );
                 setAcceptOpen(false);
                 toast.success("Acceptance recorded", {
-                  description: "Assignment appears under My Assignments.",
+                  description:
+                    "Pending admin confirmation — work unlocks after approval.",
                 });
               }}
             >

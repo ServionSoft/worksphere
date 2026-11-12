@@ -1,3 +1,4 @@
+import { RequireSession } from "@/components/auth/auth-guard";
 import type { Metadata } from "next";
 import { OverviewPage } from "@/components/dashboard/overview-page";
 
@@ -6,5 +7,9 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <OverviewPage />;
+  return (
+    <RequireSession>
+      <OverviewPage />
+    </RequireSession>
+  );
 }

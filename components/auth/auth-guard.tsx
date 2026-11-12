@@ -7,18 +7,25 @@ import {
   portalForPath,
   roleMatchesPortal,
 } from "@/lib/auth-session";
-import type { PortalKind } from "@/lib/portal-types";
+import type { AppRole, PortalKind } from "@/lib/portal-types";
 import { ShellFallback } from "@/components/layout/shell-fallback";
 
 interface AuthGuardProps {
   children: React.ReactNode;
   portal: PortalKind;
+  /** When set, user.role must be one of these (in addition to portal match). */
+  roles?: AppRole[];
 }
 
-export function AuthGuard({ children, portal }: AuthGuardProps) {
+export function AuthGuard({ children, portal, roles }: AuthGuardProps) {
   const { user, hydrated, isAuthenticated } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+
+  const portalOk =
+    !!user && roleMatchesPortal(user.role, portal) && user.portal === portal;
+  const roleOk = !roles?.length || (!!user && roles.includes(user.role));
+  const allowed = portalOk && roleOk;
 
   useEffect(() => {
     if (!hydrated) return;
@@ -29,24 +36,34 @@ export function AuthGuard({ children, portal }: AuthGuardProps) {
       return;
     }
 
-    if (!roleMatchesPortal(user.role, portal) || user.portal !== portal) {
+    if (!allowed) {
       router.replace(`/access-denied?from=${encodeURIComponent(pathname)}`);
     }
-  }, [hydrated, isAuthenticated, user, portal, router, pathname]);
+  }, [hydrated, isAuthenticated, user, allowed, router, pathname]);
 
-  if (!hydrated) {
-    return <ShellFallback />;
-  }
+  // Always keep `children` mounted. Replacing them with the fallback drops the
+  // page segment, so Cache Components cannot validate instant navigation.
+  const blocked = !hydrated || !isAuthenticated || !user || !allowed;
 
-  if (!isAuthenticated || !user) {
-    return <ShellFallback />;
-  }
+  return (
+    <>
+      {blocked ? (
+        <div className="fixed inset-0 z-50">
+          <ShellFallback />
+        </div>
+      ) : null}
+      <div className={blocked ? "hidden" : "contents"} inert={blocked}>
+        {children}
+      </div>
+    </>
+  );
+}
 
-  if (!roleMatchesPortal(user.role, portal) || user.portal !== portal) {
-    return <ShellFallback />;
-  }
-
-  return <>{children}</>;
+/** Mount protected page content only after a client session exists. */
+export function RequireSession({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  if (!user) return null;
+  return children;
 }
 
 /** Redirect authenticated users away from public auth pages. */
@@ -58,29 +75,27 @@ export function GuestOnly({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!hydrated) return;
     if (isAuthenticated && user) {
-      router.replace(portalHome(user.portal));
+      router.replace(portalHome(user.portal, user.role));
     }
   }, [hydrated, isAuthenticated, user, router]);
 
-  if (!hydrated) {
-    return (
-      <div className="flex min-h-svh items-center justify-center bg-background">
-        <div className="h-8 w-40 animate-pulse rounded-md bg-muted" />
-      </div>
-    );
-  }
+  // Keep the login segment mounted. Swapping it for a placeholder drops the
+  // page from instant-navigation validation while the session is still hydrating.
+  const blocked = !hydrated || (isAuthenticated && !!user);
 
-  if (isAuthenticated && user) {
-    return (
-      <div className="flex min-h-svh items-center justify-center bg-background">
-        <div className="h-8 w-40 animate-pulse rounded-md bg-muted" />
-      </div>
-    );
-  }
-
-  // Silence unused when path is public
   void pathname;
   void portalForPath;
 
-  return <>{children}</>;
+  return (
+    <>
+      {blocked ? (
+        <div className="fixed inset-0 z-50 flex min-h-svh items-center justify-center bg-background">
+          <div className="h-8 w-40 animate-pulse rounded-md bg-muted" />
+        </div>
+      ) : null}
+      <div className={blocked ? "hidden" : "contents"} inert={blocked}>
+        {children}
+      </div>
+    </>
+  );
 }

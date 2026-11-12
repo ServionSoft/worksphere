@@ -32,7 +32,7 @@ export function AccessDeniedPage() {
         <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
           {isAuthenticated && user ? (
             <Button
-              render={<Link href={portalHome(user.portal)} />}
+              render={<Link href={portalHome(user.portal, user.role)} />}
               nativeButton={false}
             >
               Go to my dashboard
