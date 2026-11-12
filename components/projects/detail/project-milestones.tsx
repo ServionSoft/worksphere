@@ -70,7 +70,7 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
     addMilestone,
     updateMilestone,
     updateMilestoneStatus,
-    updateTaskStatus,
+    authorizeTaskForClient,
     deleteMilestone,
   } = useWorkspaceStore();
   const items = milestones.filter((m) => m.projectId === projectId);
@@ -154,9 +154,9 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
             (t) => t.milestoneId === milestone.id
           )}
           onApproveTask={(taskId) => {
-            updateTaskStatus(taskId, "done");
-            toast.success("Task approved", {
-              description: "Marked done — milestone progress updated",
+            authorizeTaskForClient(taskId);
+            toast.success("Sent to client", {
+              description: "Client must approve before this task shows as Done",
             });
           }}
           onStatusChange={(status) => {
@@ -305,9 +305,23 @@ function MilestoneCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const awaiting = linkedTasks.filter((t) => t.status === "review");
+  const awaitingAdmin = linkedTasks.filter(
+    (t) =>
+      t.status === "review" &&
+      !(t.authorizedForClient && t.clientApprovalStatus === "pending") &&
+      t.clientApprovalStatus !== "approved"
+  );
+  const awaitingClient = linkedTasks.filter(
+    (t) => t.authorizedForClient && t.clientApprovalStatus === "pending"
+  );
   const allDone =
-    linkedTasks.length > 0 && linkedTasks.every((t) => t.status === "done");
+    linkedTasks.length > 0 &&
+    linkedTasks.every(
+      (t) =>
+        t.status === "done" &&
+        (t.requiresClientApproval === false ||
+          t.clientApprovalStatus === "approved")
+    );
 
   return (
     <SectionCard
@@ -368,12 +382,23 @@ function MilestoneCard({
                 </div>
                 <div className="flex items-center gap-2">
                   <TaskStatusBadge status={task.status} />
-                  {task.status === "review" ? (
+                  {task.authorizedForClient &&
+                  task.clientApprovalStatus === "pending" ? (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                      Awaiting client
+                    </span>
+                  ) : null}
+                  {task.status === "review" &&
+                  task.clientApprovalStatus !== "approved" &&
+                  !(
+                    task.authorizedForClient &&
+                    task.clientApprovalStatus === "pending"
+                  ) ? (
                     <Button
                       size="xs"
                       onClick={() => onApproveTask(task.id)}
                     >
-                      Approve
+                      Approve for client
                     </Button>
                   ) : null}
                 </div>
@@ -381,15 +406,21 @@ function MilestoneCard({
             ))}
           </ul>
         )}
-        {awaiting.length > 0 ? (
+        {awaitingAdmin.length > 0 ? (
           <p className="mt-2 text-xs font-medium text-amber-800">
-            {awaiting.length} task{awaiting.length === 1 ? "" : "s"} awaiting
-            your approval
+            {awaitingAdmin.length} task
+            {awaitingAdmin.length === 1 ? "" : "s"} awaiting your approval
+          </p>
+        ) : null}
+        {awaitingClient.length > 0 ? (
+          <p className="mt-2 text-xs font-medium text-amber-800">
+            {awaitingClient.length} task
+            {awaitingClient.length === 1 ? "" : "s"} with client for sign-off
           </p>
         ) : null}
         {allDone && milestone.status !== "completed" ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            All tasks done — mark milestone Completed when ready.
+            All tasks client-approved — mark milestone Completed when ready.
           </p>
         ) : null}
       </div>

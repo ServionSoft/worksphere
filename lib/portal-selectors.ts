@@ -12,6 +12,44 @@ import type {
   WorkSubmissionVersion,
 } from "@/lib/portal-types";
 
+/** Parent tasks need client sign-off unless explicitly opted out. */
+export function taskNeedsClientApproval(task: Task) {
+  if (task.parentId) return false;
+  return task.requiresClientApproval !== false;
+}
+
+/** Normalize legacy seed/persisted tasks to the client-approval gate. */
+export function normalizeTaskClientGate(task: Task): Task {
+  if (task.parentId) {
+    return {
+      ...task,
+      requiresClientApproval: false,
+      clientApprovalStatus: "not_required",
+      authorizedForClient: false,
+    };
+  }
+  if (task.requiresClientApproval === false) {
+    return {
+      ...task,
+      clientApprovalStatus: task.clientApprovalStatus ?? "not_required",
+    };
+  }
+  if (task.status === "done" && !task.clientApprovalStatus) {
+    return {
+      ...task,
+      requiresClientApproval: true,
+      authorizedForClient: true,
+      clientApprovalStatus: "approved",
+    };
+  }
+  return {
+    ...task,
+    requiresClientApproval: true,
+    authorizedForClient: task.authorizedForClient ?? false,
+    clientApprovalStatus: task.clientApprovalStatus ?? "not_required",
+  };
+}
+
 export function clientProjects(projects: Project[], user: SessionUser) {
   const ids = user.clientId ? clientProjectAccess[user.clientId] ?? [] : [];
   return projects.filter((p) => ids.includes(p.id));
@@ -43,6 +81,98 @@ export function clientPendingApprovals(
       w.authorizedForClient &&
       w.clientApprovalStatus === "pending"
   );
+}
+
+/** Client never sees Done until admin authorized + client approved. */
+export function clientMilestoneDisplayStatus(
+  milestone: Milestone,
+  work: WorkSubmissionVersion[],
+  tasks: Task[] = []
+): Milestone["status"] {
+  const linkedWork = work.filter(
+    (w) => w.milestoneId === milestone.id && w.requiresClientApproval
+  );
+  const linkedTasks = tasks.filter(
+    (t) =>
+      t.milestoneId === milestone.id &&
+      !t.parentId &&
+      taskNeedsClientApproval(t)
+  );
+  const workApproved = linkedWork.some(
+    (w) => w.clientApprovalStatus === "approved"
+  );
+  const tasksApproved =
+    linkedTasks.length > 0 &&
+    linkedTasks.every((t) => t.clientApprovalStatus === "approved");
+  if (workApproved || tasksApproved) {
+    return "completed";
+  }
+  const pendingClient =
+    linkedWork.some(
+      (w) => w.authorizedForClient && w.clientApprovalStatus === "pending"
+    ) ||
+    linkedTasks.some(
+      (t) => t.authorizedForClient && t.clientApprovalStatus === "pending"
+    );
+  // Internal complete/missed must not leak as Done before client sign-off
+  if (milestone.status === "completed" || milestone.status === "missed") {
+    if (pendingClient) return "in_progress";
+    return milestone.status === "missed" ? "missed" : "in_progress";
+  }
+  return milestone.status;
+}
+
+export function clientTaskDisplayLabel(task: Task): string {
+  if (!taskNeedsClientApproval(task)) {
+    if (task.status === "done") return "Done";
+    if (task.status === "review") return "In review";
+    if (task.status === "in_progress") return "In progress";
+    if (task.status === "blocked") return "Blocked";
+    return "Upcoming";
+  }
+  if (task.clientApprovalStatus === "approved") return "Done";
+  if (
+    task.authorizedForClient &&
+    task.clientApprovalStatus === "pending"
+  ) {
+    return "Awaiting your approval";
+  }
+  if (task.clientApprovalStatus === "revision_requested") {
+    return "Revisions requested";
+  }
+  if (task.clientApprovalStatus === "rejected") return "Rejected";
+  if (task.status === "done" || task.status === "review") return "In review";
+  if (task.status === "in_progress") return "In progress";
+  if (task.status === "blocked") return "Blocked";
+  return "Upcoming";
+}
+
+export function clientPendingTaskApprovals(
+  tasks: Task[],
+  projectIds: string[]
+) {
+  return tasks.filter(
+    (t) =>
+      !t.parentId &&
+      projectIds.includes(t.projectId) &&
+      taskNeedsClientApproval(t) &&
+      t.authorizedForClient &&
+      t.clientApprovalStatus === "pending"
+  );
+}
+
+export function clientDeliverableDisplayLabel(
+  work: WorkSubmissionVersion
+): string {
+  if (work.clientApprovalStatus === "approved") return "Done";
+  if (work.clientApprovalStatus === "revision_requested") {
+    return "Revisions requested";
+  }
+  if (work.clientApprovalStatus === "rejected") return "Rejected";
+  if (work.authorizedForClient && work.clientApprovalStatus === "pending") {
+    return "Awaiting your approval";
+  }
+  return "In review";
 }
 
 export function developerAssignments(

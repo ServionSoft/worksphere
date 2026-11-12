@@ -92,6 +92,13 @@ export interface Project {
   developerIds?: string[];
 }
 
+export type TaskClientApprovalStatus =
+  | "not_required"
+  | "pending"
+  | "approved"
+  | "revision_requested"
+  | "rejected";
+
 export interface Task {
   id: string;
   title: string;
@@ -108,6 +115,10 @@ export interface Task {
   dependsOn: string[];
   milestoneId?: string | null;
   order: number;
+  /** Parent project tasks default to client sign-off after admin. */
+  requiresClientApproval?: boolean;
+  authorizedForClient?: boolean;
+  clientApprovalStatus?: TaskClientApprovalStatus;
 }
 
 export interface Milestone {

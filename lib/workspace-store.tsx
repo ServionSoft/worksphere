@@ -43,6 +43,10 @@ import {
   loadWorkspaceSnapshot,
   saveWorkspaceSnapshot,
 } from "@/lib/store-persist";
+import {
+  normalizeTaskClientGate,
+  taskNeedsClientApproval,
+} from "@/lib/portal-selectors";
 import type {
   ActivityItem,
   Client,
@@ -55,6 +59,7 @@ import type {
   Submission,
   SubmissionStatus,
   Task,
+  TaskClientApprovalStatus,
   TaskStatus,
   TeamMember,
   Workspace,
@@ -192,6 +197,15 @@ interface WorkspaceStoreValue {
   updateTask: (taskId: string, patch: Partial<Task>) => void;
   addTask: (task: Task) => void;
   deleteTask: (taskId: string) => void;
+  authorizeTaskForClient: (taskId: string) => void;
+  clientReviewTask: (
+    taskId: string,
+    decision: Extract<
+      TaskClientApprovalStatus,
+      "approved" | "revision_requested" | "rejected"
+    >,
+    note?: string
+  ) => void;
   addMilestone: (milestone: Milestone) => void;
   updateMilestone: (id: string, patch: Partial<Milestone>) => void;
   updateMilestoneStatus: (milestoneId: string, status: MilestoneStatus) => void;
@@ -308,7 +322,7 @@ function seedState() {
     workspaceId: seedWorkspaces[0].id,
     workspaces: seedWorkspaces.map((w) => ({ ...w })),
     projects: initialProjects,
-    tasks: initialTasks,
+    tasks: initialTasks.map(normalizeTaskClientGate),
     milestones: initialMilestones,
     documents: initialDocuments,
     comments: initialComments,
@@ -386,7 +400,9 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         setWorkspaceDirectory(snap.workspaces as Workspace[]);
       }
       if (Array.isArray(snap.projects)) setProjects(snap.projects as Project[]);
-      if (Array.isArray(snap.tasks)) setTasks(snap.tasks as Task[]);
+      if (Array.isArray(snap.tasks)) {
+        setTasks((snap.tasks as Task[]).map(normalizeTaskClientGate));
+      }
       if (Array.isArray(snap.milestones))
         setMilestones(snap.milestones as Milestone[]);
       if (Array.isArray(snap.documents))
@@ -542,8 +558,17 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         !s.workSubmissionId &&
         (s.status === "submitted" || s.status === "in_review")
     ).length;
-    return workPending + orphanSubmissionPending;
-  }, [workSubmissions, submissions, scopedProjectIds]);
+    const taskPending = scopedTasks.filter(
+      (t) =>
+        !t.parentId &&
+        taskNeedsClientApproval(t) &&
+        ((t.status === "review" &&
+          t.clientApprovalStatus !== "approved" &&
+          !(t.authorizedForClient && t.clientApprovalStatus === "pending")) ||
+          (t.authorizedForClient && t.clientApprovalStatus === "pending"))
+    ).length;
+    return workPending + orphanSubmissionPending + taskPending;
+  }, [workSubmissions, submissions, scopedProjectIds, scopedTasks]);
 
   const resolveDeveloperUserId = useCallback(
     (developerId: string) => {
@@ -627,8 +652,156 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
     setMilestones((prev) => prev.filter((m) => m.projectId !== id));
   }, []);
 
+  const syncMilestoneAfterTasks = useCallback(
+    (taskList: Task[], milestoneId: string, projectId: string) => {
+      setMilestones((ms) => {
+        const synced = applyMilestoneProgressFromTasks(
+          ms,
+          taskList,
+          milestoneId
+        );
+        const nextProjectProgress = projectProgressFromMilestones(
+          projectId,
+          synced
+        );
+        if (nextProjectProgress !== null) {
+          setProjects((ps) =>
+            ps.map((p) =>
+              p.id === projectId ? { ...p, progress: nextProjectProgress } : p
+            )
+          );
+        }
+        return synced;
+      });
+    },
+    []
+  );
+
+  const authorizeTaskForClient = useCallback(
+    (taskId: string) => {
+      let touched: Task | undefined;
+      setTasks((prev) => {
+        const task = prev.find((t) => t.id === taskId);
+        if (!task || !taskNeedsClientApproval(task)) return prev;
+        touched = task;
+        const next = prev.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                status: "review" as TaskStatus,
+                requiresClientApproval: true,
+                authorizedForClient: true,
+                clientApprovalStatus: "pending" as TaskClientApprovalStatus,
+              }
+            : t
+        );
+        if (task.milestoneId) {
+          syncMilestoneAfterTasks(next, task.milestoneId, task.projectId);
+        }
+        pushActivity(setActivity, {
+          type: "approval",
+          title: "Task sent for client approval",
+          description: task.title,
+          actorName: currentUser.name,
+          projectId: task.projectId,
+          projectName: task.projectName,
+        });
+        return next;
+      });
+      if (!touched) return;
+      const project = projects.find((p) => p.id === touched!.projectId);
+      notify({
+        portal: "client",
+        userId: resolveClientUserId(project?.clientId),
+        title: "Task ready for your approval",
+        body: `${touched.title} — ${touched.projectName}`,
+        href: "/client/approvals",
+        workspaceId: project?.workspaceId || workspaceIdRef.current,
+      });
+    },
+    [notify, projects, resolveClientUserId, syncMilestoneAfterTasks]
+  );
+
+  const clientReviewTask = useCallback(
+    (
+      taskId: string,
+      decision: Extract<
+        TaskClientApprovalStatus,
+        "approved" | "revision_requested" | "rejected"
+      >,
+      note?: string
+    ) => {
+      let touched: Task | undefined;
+      setTasks((prev) => {
+        const task = prev.find((t) => t.id === taskId);
+        if (
+          !task ||
+          !task.authorizedForClient ||
+          task.clientApprovalStatus !== "pending"
+        ) {
+          return prev;
+        }
+        touched = task;
+        const nextStatus: TaskStatus =
+          decision === "approved" ? "done" : "in_progress";
+        const next = prev.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                status: nextStatus,
+                clientApprovalStatus: decision,
+                authorizedForClient: decision === "approved",
+              }
+            : t
+        );
+        if (task.milestoneId) {
+          syncMilestoneAfterTasks(next, task.milestoneId, task.projectId);
+        }
+        pushActivity(setActivity, {
+          type: "approval",
+          title:
+            decision === "approved"
+              ? "Client approved task"
+              : "Client returned task",
+          description: note ? `${task.title} — ${note}` : task.title,
+          actorName: "Client",
+          projectId: task.projectId,
+          projectName: task.projectName,
+        });
+        return next;
+      });
+      if (!touched) return;
+      notify({
+        portal: "admin",
+        userId: "u1",
+        title:
+          decision === "approved"
+            ? "Client approved task"
+            : "Client returned task",
+        body: touched.title,
+        href: `/projects/${touched.projectId}`,
+        workspaceId:
+          projects.find((p) => p.id === touched!.projectId)?.workspaceId ||
+          workspaceIdRef.current,
+      });
+    },
+    [notify, projects, syncMilestoneAfterTasks]
+  );
+
   const updateTaskStatus = useCallback(
     (taskId: string, status: TaskStatus) => {
+      const existing = tasks.find((t) => t.id === taskId);
+      // Client-gated tasks: admin "done" = send to client, not client Done
+      if (
+        existing &&
+        status === "done" &&
+        taskNeedsClientApproval(existing) &&
+        existing.clientApprovalStatus !== "approved"
+      ) {
+        authorizeTaskForClient(taskId);
+        return;
+      }
+
       let touched: Task | undefined;
       setTasks((prev) => {
         const task = prev.find((t) => t.id === taskId);
@@ -643,29 +816,17 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
             projectName: task.projectName,
           });
         }
-        const next = prev.map((t) => (t.id === taskId ? { ...t, status } : t));
+        const next = prev.map((t) => {
+          if (t.id !== taskId) return t;
+          const patch: Task = { ...t, status };
+          if (status === "review" && taskNeedsClientApproval(t)) {
+            patch.authorizedForClient = false;
+            patch.clientApprovalStatus = "not_required";
+          }
+          return patch;
+        });
         if (task?.milestoneId) {
-          setMilestones((ms) => {
-            const synced = applyMilestoneProgressFromTasks(
-              ms,
-              next,
-              task.milestoneId!
-            );
-            const nextProjectProgress = projectProgressFromMilestones(
-              task.projectId,
-              synced
-            );
-            if (nextProjectProgress !== null) {
-              setProjects((ps) =>
-                ps.map((p) =>
-                  p.id === task.projectId
-                    ? { ...p, progress: nextProjectProgress }
-                    : p
-                )
-              );
-            }
-            return synced;
-          });
+          syncMilestoneAfterTasks(next, task.milestoneId, task.projectId);
         }
         return next;
       });
@@ -683,7 +844,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [notify, projects]
+    [authorizeTaskForClient, notify, projects, syncMilestoneAfterTasks, tasks]
   );
 
   const updateTask = useCallback((taskId: string, patch: Partial<Task>) => {
@@ -1841,6 +2002,8 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       updateTask,
       addTask,
       deleteTask,
+      authorizeTaskForClient,
+      clientReviewTask,
       addMilestone,
       updateMilestone,
       updateMilestoneStatus,
@@ -1962,6 +2125,8 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       updateTask,
       addTask,
       deleteTask,
+      authorizeTaskForClient,
+      clientReviewTask,
       addMilestone,
       updateMilestone,
       updateMilestoneStatus,

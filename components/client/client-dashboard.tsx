@@ -12,8 +12,10 @@ import { useRequiredAuth } from "@/lib/auth-store";
 import { formatShortDate } from "@/lib/format";
 import {
   clientDocuments,
+  clientMilestoneDisplayStatus,
   clientMilestones,
   clientPendingApprovals,
+  clientPendingTaskApprovals,
   clientProjects,
   productionStage,
 } from "@/lib/portal-selectors";
@@ -26,6 +28,7 @@ export function ClientDashboard() {
     milestones,
     documents,
     workSubmissions,
+    tasks,
     threads,
     activity,
   } = useWorkspaceStore();
@@ -33,7 +36,9 @@ export function ClientDashboard() {
   const myProjects = clientProjects(projects, user);
   const ids = myProjects.map((p) => p.id);
   const myMilestones = clientMilestones(milestones, ids).slice(0, 4);
-  const pending = clientPendingApprovals(workSubmissions, ids);
+  const pendingDeliverables = clientPendingApprovals(workSubmissions, ids);
+  const pendingTasks = clientPendingTaskApprovals(tasks, ids);
+  const pendingCount = pendingDeliverables.length + pendingTasks.length;
   const docs = clientDocuments(documents, ids).slice(0, 4);
   const clientThreads = threads.filter(
     (t) =>
@@ -52,7 +57,7 @@ export function ClientDashboard() {
       label: "Completed",
       value: myProjects.filter((p) => p.status === "completed").length,
     },
-    { label: "Pending Approvals", value: pending.length },
+    { label: "Pending Approvals", value: pendingCount },
     {
       label: "Upcoming Deliveries",
       value: myMilestones.filter((m) => m.status !== "completed").length,
@@ -136,24 +141,34 @@ export function ClientDashboard() {
       <div className="grid gap-4 xl:grid-cols-3">
         <SectionCard title="Upcoming milestones" bodyClassName="p-0">
           <ul className="divide-y divide-border">
-            {myMilestones.map((m) => (
-              <li key={m.id} className="flex items-center justify-between gap-3 px-5 py-3">
-                <div>
-                  <p className="text-sm font-medium">{m.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    <CalendarDays className="mr-1 inline size-3" />
-                    {formatShortDate(m.dueDate)}
-                  </p>
-                </div>
-                <MilestoneStatusBadge status={m.status} />
-              </li>
-            ))}
+            {myMilestones.map((m) => {
+              const displayStatus = clientMilestoneDisplayStatus(
+                m,
+                workSubmissions,
+                tasks
+              );
+              return (
+                <li
+                  key={m.id}
+                  className="flex items-center justify-between gap-3 px-5 py-3"
+                >
+                  <div>
+                    <p className="text-sm font-medium">{m.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      <CalendarDays className="mr-1 inline size-3" />
+                      {formatShortDate(m.dueDate)}
+                    </p>
+                  </div>
+                  <MilestoneStatusBadge status={displayStatus} />
+                </li>
+              );
+            })}
           </ul>
         </SectionCard>
 
         <SectionCard title="Pending approvals" bodyClassName="p-0">
           <ul className="divide-y divide-border">
-            {pending.map((item) => (
+            {pendingTasks.map((item) => (
               <li key={item.id} className="px-5 py-3">
                 <Link
                   href="/client/approvals"
@@ -162,11 +177,24 @@ export function ClientDashboard() {
                   {item.title}
                 </Link>
                 <p className="text-xs text-muted-foreground">
-                  v{item.version} · {item.submittedBy}
+                  Task · {item.assigneeName}
                 </p>
               </li>
             ))}
-            {pending.length === 0 ? (
+            {pendingDeliverables.map((item) => (
+              <li key={item.id} className="px-5 py-3">
+                <Link
+                  href="/client/approvals"
+                  className="text-sm font-medium hover:text-primary"
+                >
+                  {item.title}
+                </Link>
+                <p className="text-xs text-muted-foreground">
+                  Deliverable · v{item.version} · {item.submittedBy}
+                </p>
+              </li>
+            ))}
+            {pendingCount === 0 ? (
               <li className="px-5 py-8 text-center text-sm text-muted-foreground">
                 No approvals waiting.
               </li>

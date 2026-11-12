@@ -12,7 +12,10 @@ import { MilestoneStatusBadge } from "@/components/shared/milestone-badge";
 import { useRequiredAuth } from "@/lib/auth-store";
 import { formatCurrency, formatDate, formatShortDate } from "@/lib/format";
 import {
+  clientDeliverableDisplayLabel,
+  clientMilestoneDisplayStatus,
   clientProjects,
+  clientTaskDisplayLabel,
   productionStage,
 } from "@/lib/portal-selectors";
 import { useWorkspaceStore } from "@/lib/workspace-store";
@@ -73,14 +76,23 @@ export function ClientProjectDetail({ projectId }: { projectId: string }) {
     );
   }
 
-  const completed = projectTasks.filter((t) => t.status === "done").length;
-  const inProgress = projectTasks.filter((t) =>
-    ["in_progress", "review"].includes(t.status)
+  const taskLabels = useMemo(
+    () =>
+      projectTasks.map((t) => ({
+        task: t,
+        label: clientTaskDisplayLabel(t),
+      })),
+    [projectTasks]
+  );
+  const completed = taskLabels.filter((t) => t.label === "Done").length;
+  const inProgress = taskLabels.filter((t) =>
+    ["In progress", "In review", "Awaiting your approval"].includes(t.label)
   ).length;
-  const upcoming = projectTasks.filter((t) => t.status === "todo").length;
-  const delayed = projectTasks.filter(
-    (t) => t.status !== "done" && t.dueDate < "2026-03-11"
-  ).length;
+  const upcoming = taskLabels.filter((t) => t.label === "Upcoming").length;
+  const delayed = projectTasks.filter((t) => {
+    const label = clientTaskDisplayLabel(t);
+    return label !== "Done" && t.dueDate < "2026-03-11";
+  }).length;
 
   function postMessage() {
     if (!thread || !messageBody.trim()) return;
@@ -169,38 +181,58 @@ export function ClientProjectDetail({ projectId }: { projectId: string }) {
           </div>
           <SectionCard title="Task snapshot" className="mt-4" bodyClassName="p-0">
             <ul className="divide-y divide-border">
-              {projectTasks.slice(0, 8).map((task) => (
-                <li key={task.id} className="flex justify-between px-5 py-3 text-sm">
+              {taskLabels.slice(0, 8).map(({ task, label }) => (
+                <li
+                  key={task.id}
+                  className="flex justify-between gap-3 px-5 py-3 text-sm"
+                >
                   <span>{task.title}</span>
-                  <span className="text-xs text-muted-foreground">{task.status}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {label}
+                  </span>
                 </li>
               ))}
             </ul>
+            <p className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
+              Done appears only after admin approval and your sign-off.
+            </p>
           </SectionCard>
         </TabsContent>
 
         <TabsContent value="milestones" className="mt-4">
           <div className="flex flex-col gap-3">
-            {projectMilestones.map((m) => (
-              <SectionCard
-                key={m.id}
-                title={m.title}
-                description={`Due ${formatDate(m.dueDate)}`}
-                action={<MilestoneStatusBadge status={m.status} />}
-              >
-                <p className="text-sm text-muted-foreground">{m.description}</p>
-                <ul className="mt-3 flex flex-col gap-1.5">
-                  {m.deliverables.map((d) => (
-                    <li key={d} className="rounded-lg border border-border px-3 py-2 text-sm">
-                      {d}
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Approval status follows client review of linked submissions.
-                </p>
-              </SectionCard>
-            ))}
+            {projectMilestones.map((m) => {
+              const displayStatus = clientMilestoneDisplayStatus(
+                m,
+                workSubmissions,
+                projectTasks
+              );
+              return (
+                <SectionCard
+                  key={m.id}
+                  title={m.title}
+                  description={`Due ${formatDate(m.dueDate)}`}
+                  action={<MilestoneStatusBadge status={displayStatus} />}
+                >
+                  <p className="text-sm text-muted-foreground">{m.description}</p>
+                  <ul className="mt-3 flex flex-col gap-1.5">
+                    {m.deliverables.map((d) => (
+                      <li
+                        key={d}
+                        className="rounded-lg border border-border px-3 py-2 text-sm"
+                      >
+                        {d}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    {displayStatus === "completed"
+                      ? "Marked Done after your approval."
+                      : "Done only after admin sends it for review and you approve."}
+                  </p>
+                </SectionCard>
+              );
+            })}
           </div>
         </TabsContent>
 
@@ -211,14 +243,14 @@ export function ClientProjectDetail({ projectId }: { projectId: string }) {
                 <li key={item.id} className="px-5 py-3">
                   <p className="text-sm font-medium">{item.title}</p>
                   <p className="text-xs text-muted-foreground">
-                    v{item.version} · {item.clientApprovalStatus} ·{" "}
+                    v{item.version} · {clientDeliverableDisplayLabel(item)} ·{" "}
                     {formatShortDate(item.submittedAt)}
                   </p>
                 </li>
               ))}
               {approvals.length === 0 ? (
                 <li className="px-5 py-8 text-center text-sm text-muted-foreground">
-                  No deliverables submitted yet.
+                  No deliverables ready for you yet. Admin must approve first.
                 </li>
               ) : null}
             </ul>
