@@ -116,6 +116,49 @@ function projectProgressFromMilestones(
   return Math.round(sum / projectMs.length);
 }
 
+const TASK_STATUS_PROGRESS: Record<TaskStatus, number> = {
+  todo: 0,
+  blocked: 0,
+  in_progress: 40,
+  review: 75,
+  done: 100,
+};
+
+/** Milestone progress from parent tasks linked to that milestone. */
+function milestoneProgressFromTasks(milestoneId: string, taskList: Task[]) {
+  const linked = taskList.filter(
+    (t) => t.milestoneId === milestoneId && !t.parentId
+  );
+  if (linked.length === 0) return null;
+  const sum = linked.reduce(
+    (acc, t) => acc + (TASK_STATUS_PROGRESS[t.status] ?? 0),
+    0
+  );
+  return Math.round(sum / linked.length);
+}
+
+function applyMilestoneProgressFromTasks(
+  milestoneList: Milestone[],
+  taskList: Task[],
+  milestoneId: string
+): Milestone[] {
+  const progress = milestoneProgressFromTasks(milestoneId, taskList);
+  if (progress === null) return milestoneList;
+  return milestoneList.map((m) => {
+    if (m.id !== milestoneId) return m;
+    if (m.status === "completed" || m.status === "missed") {
+      return { ...m, progress };
+    }
+    const nextStatus: MilestoneStatus =
+      progress <= 0
+        ? m.status === "upcoming"
+          ? "upcoming"
+          : m.status
+        : "in_progress";
+    return { ...m, progress, status: nextStatus };
+  });
+}
+
 interface WorkspaceStoreValue {
   hydrated: boolean;
   workspace: Workspace;
@@ -584,22 +627,64 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
     setMilestones((prev) => prev.filter((m) => m.projectId !== id));
   }, []);
 
-  const updateTaskStatus = useCallback((taskId: string, status: TaskStatus) => {
-    setTasks((prev) => {
-      const task = prev.find((t) => t.id === taskId);
-      if (task) {
-        pushActivity(setActivity, {
-          type: "status_change",
-          title: "Task status updated",
-          description: `${task.title} → ${status}`,
-          actorName: currentUser.name,
-          projectId: task.projectId,
-          projectName: task.projectName,
+  const updateTaskStatus = useCallback(
+    (taskId: string, status: TaskStatus) => {
+      let touched: Task | undefined;
+      setTasks((prev) => {
+        const task = prev.find((t) => t.id === taskId);
+        touched = task;
+        if (task) {
+          pushActivity(setActivity, {
+            type: "status_change",
+            title: "Task status updated",
+            description: `${task.title} → ${status}`,
+            actorName: currentUser.name,
+            projectId: task.projectId,
+            projectName: task.projectName,
+          });
+        }
+        const next = prev.map((t) => (t.id === taskId ? { ...t, status } : t));
+        if (task?.milestoneId) {
+          setMilestones((ms) => {
+            const synced = applyMilestoneProgressFromTasks(
+              ms,
+              next,
+              task.milestoneId!
+            );
+            const nextProjectProgress = projectProgressFromMilestones(
+              task.projectId,
+              synced
+            );
+            if (nextProjectProgress !== null) {
+              setProjects((ps) =>
+                ps.map((p) =>
+                  p.id === task.projectId
+                    ? { ...p, progress: nextProjectProgress }
+                    : p
+                )
+              );
+            }
+            return synced;
+          });
+        }
+        return next;
+      });
+
+      if (touched && status === "review") {
+        notify({
+          portal: "admin",
+          userId: "u1",
+          title: "Task ready for approval",
+          body: `${touched.title} — ${touched.projectName}`,
+          href: `/projects/${touched.projectId}`,
+          workspaceId:
+            projects.find((p) => p.id === touched!.projectId)?.workspaceId ||
+            workspaceIdRef.current,
         });
       }
-      return prev.map((t) => (t.id === taskId ? { ...t, status } : t));
-    });
-  }, []);
+    },
+    [notify, projects]
+  );
 
   const updateTask = useCallback((taskId: string, patch: Partial<Task>) => {
     setTasks((prev) =>

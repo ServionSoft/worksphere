@@ -30,7 +30,8 @@ import {
 import { DEMO_NOW_ISO, demoId } from "@/lib/demo-clock";
 import { formatDate } from "@/lib/format";
 import { useWorkspaceStore } from "@/lib/workspace-store";
-import type { Milestone, MilestoneStatus } from "@/lib/types";
+import { TaskStatusBadge } from "@/components/shared/status-badge";
+import type { Milestone, MilestoneStatus, Task } from "@/lib/types";
 import { toast } from "sonner";
 
 const statuses: MilestoneStatus[] = [
@@ -65,12 +66,17 @@ const emptyForm: MilestoneFormState = {
 export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
   const {
     milestones,
+    tasks,
     addMilestone,
     updateMilestone,
     updateMilestoneStatus,
+    updateTaskStatus,
     deleteMilestone,
   } = useWorkspaceStore();
   const items = milestones.filter((m) => m.projectId === projectId);
+  const projectTasks = tasks.filter(
+    (t) => t.projectId === projectId && !t.parentId
+  );
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<MilestoneFormState>(emptyForm);
@@ -144,6 +150,15 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
         <MilestoneCard
           key={milestone.id}
           milestone={milestone}
+          linkedTasks={projectTasks.filter(
+            (t) => t.milestoneId === milestone.id
+          )}
+          onApproveTask={(taskId) => {
+            updateTaskStatus(taskId, "done");
+            toast.success("Task approved", {
+              description: "Marked done — milestone progress updated",
+            });
+          }}
           onStatusChange={(status) => {
             updateMilestoneStatus(milestone.id, status);
             toast.success("Milestone updated", {
@@ -277,15 +292,23 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
 
 function MilestoneCard({
   milestone,
+  linkedTasks,
+  onApproveTask,
   onStatusChange,
   onEdit,
   onDelete,
 }: {
   milestone: Milestone;
+  linkedTasks: Task[];
+  onApproveTask: (taskId: string) => void;
   onStatusChange: (status: MilestoneStatus) => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const awaiting = linkedTasks.filter((t) => t.status === "review");
+  const allDone =
+    linkedTasks.length > 0 && linkedTasks.every((t) => t.status === "done");
+
   return (
     <SectionCard
       title={milestone.title}
@@ -323,6 +346,55 @@ function MilestoneCard({
       </div>
 
       <div className="mt-4">
+        <p className="mb-2 text-xs font-medium text-foreground">
+          Milestone tasks
+        </p>
+        {linkedTasks.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No tasks linked. Assign tasks to this milestone from the task board.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {linkedTasks.map((task) => (
+              <li
+                key={task.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{task.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {task.assigneeName}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <TaskStatusBadge status={task.status} />
+                  {task.status === "review" ? (
+                    <Button
+                      size="xs"
+                      onClick={() => onApproveTask(task.id)}
+                    >
+                      Approve
+                    </Button>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {awaiting.length > 0 ? (
+          <p className="mt-2 text-xs font-medium text-amber-800">
+            {awaiting.length} task{awaiting.length === 1 ? "" : "s"} awaiting
+            your approval
+          </p>
+        ) : null}
+        {allDone && milestone.status !== "completed" ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            All tasks done — mark milestone Completed when ready.
+          </p>
+        ) : null}
+      </div>
+
+      <div className="mt-4">
         <p className="mb-2 text-xs font-medium text-foreground">Deliverables</p>
         <ul className="flex flex-col gap-1.5">
           {milestone.deliverables.map((item) => (
@@ -340,7 +412,7 @@ function MilestoneCard({
       </div>
 
       <div className="mt-4 flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">Update status</span>
+        <span className="text-xs text-muted-foreground">Milestone status</span>
         <Select
           value={milestone.status}
           onValueChange={(v) => v && onStatusChange(v as MilestoneStatus)}

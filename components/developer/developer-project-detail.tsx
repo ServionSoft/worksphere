@@ -27,11 +27,11 @@ import { useWorkspaceStore } from "@/lib/workspace-store";
 import type { TaskStatus } from "@/lib/types";
 import { toast } from "sonner";
 
-const taskStatuses: TaskStatus[] = [
+/** Developer works the task; admin marks done after approval. */
+const developerWorkStatuses: TaskStatus[] = [
   "todo",
   "in_progress",
   "review",
-  "done",
   "blocked",
 ];
 
@@ -209,7 +209,7 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
         <TabsContent value="my-tasks" className="mt-4">
           <SectionCard
             title="Tasks assigned to you"
-            description="Update status as you progress — same board the team sees."
+            description="Work each task, then set Review — admin approves Done."
             bodyClassName="p-0"
           >
             {myTasks.length === 0 ? (
@@ -242,23 +242,35 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
                           <TaskStatusBadge status={task.status} />
                         </div>
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {taskStatuses.map((status) => (
-                          <Button
-                            key={status}
-                            size="xs"
-                            variant={
-                              task.status === status ? "secondary" : "outline"
-                            }
-                            onClick={() => {
-                              updateTaskStatus(task.id, status);
-                              toast.success("Task status updated");
-                            }}
-                          >
-                            {status.replace("_", " ")}
-                          </Button>
-                        ))}
-                      </div>
+                      {task.status === "done" ? (
+                        <p className="mt-3 text-xs text-muted-foreground">
+                          Approved by admin.
+                        </p>
+                      ) : (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {developerWorkStatuses.map((status) => (
+                            <Button
+                              key={status}
+                              size="xs"
+                              variant={
+                                task.status === status ? "secondary" : "outline"
+                              }
+                              onClick={() => {
+                                updateTaskStatus(task.id, status);
+                                toast.success(
+                                  status === "review"
+                                    ? "Sent for admin approval"
+                                    : "Task status updated"
+                                );
+                              }}
+                            >
+                              {status === "review"
+                                ? "submit for approval"
+                                : status.replace("_", " ")}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
                     </li>
                   );
                 })}
@@ -270,34 +282,58 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
         <TabsContent value="board" className="mt-4">
           <SectionCard
             title="Project task board"
-            description="Full project context (read + your status updates on your tasks)."
+            description="Full project context — update status only on tasks assigned to you."
             bodyClassName="p-0"
           >
             <ul className="divide-y divide-border">
               {projectTasks.map((task) => {
                 const mine = task.assigneeId === user.developerId;
                 return (
-                  <li
-                    key={task.id}
-                    className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">
-                        {task.title}
-                        {mine ? (
-                          <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                            You
-                          </span>
-                        ) : null}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {task.assigneeName} · {formatShortDate(task.dueDate)}
-                      </p>
+                  <li key={task.id} className="px-5 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">
+                          {task.title}
+                          {mine ? (
+                            <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                              You
+                            </span>
+                          ) : null}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {task.assigneeName} · {formatShortDate(task.dueDate)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <PriorityBadge priority={task.priority} />
+                        <TaskStatusBadge status={task.status} />
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <PriorityBadge priority={task.priority} />
-                      <TaskStatusBadge status={task.status} />
-                    </div>
+                    {mine && task.status !== "done" ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {developerWorkStatuses.map((status) => (
+                          <Button
+                            key={status}
+                            size="xs"
+                            variant={
+                              task.status === status ? "secondary" : "outline"
+                            }
+                            onClick={() => {
+                              updateTaskStatus(task.id, status);
+                              toast.success(
+                                status === "review"
+                                  ? "Sent for admin approval"
+                                  : "Task updated"
+                              );
+                            }}
+                          >
+                            {status === "review"
+                              ? "submit for approval"
+                              : status.replace("_", " ")}
+                          </Button>
+                        ))}
+                      </div>
+                    ) : null}
                   </li>
                 );
               })}
@@ -307,40 +343,112 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
 
         <TabsContent value="milestones" className="mt-4">
           <div className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              Each milestone has its own tasks. You work them, submit for
+              approval, and admin marks Done. Admin also completes the
+              milestone.
+            </p>
             {projectMilestones.map((m) => {
               const linkedTasks = projectTasks.filter(
                 (t) => t.milestoneId === m.id
               );
+              const myLinked = linkedTasks.filter(
+                (t) => t.assigneeId === user.developerId
+              );
+              const awaitingAdmin = myLinked.filter(
+                (t) => t.status === "review"
+              ).length;
               return (
                 <SectionCard
                   key={m.id}
                   title={m.title}
-                  description={`Due ${formatDate(m.dueDate)}`}
+                  description={`Due ${formatDate(m.dueDate)} · ${myLinked.length} of your tasks`}
                   action={<MilestoneStatusBadge status={m.status} />}
                 >
                   <p className="text-sm text-muted-foreground">{m.description}</p>
                   <div className="mt-3">
                     <div className="mb-1 flex justify-between text-xs">
-                      <span className="text-muted-foreground">Milestone progress</span>
+                      <span className="text-muted-foreground">
+                        Milestone progress
+                      </span>
                       <span className="tabular-nums">{m.progress}%</span>
                     </div>
                     <Progress value={m.progress} />
                   </div>
-                  <ul className="mt-3 flex flex-col gap-1.5">
-                    {m.deliverables.map((d) => (
-                      <li
-                        key={d}
-                        className="rounded-lg border border-border px-3 py-2 text-sm"
-                      >
-                        {d}
-                      </li>
-                    ))}
-                  </ul>
-                  {linkedTasks.length > 0 ? (
+                  {awaitingAdmin > 0 ? (
+                    <p className="mt-2 text-xs font-medium text-amber-800">
+                      {awaitingAdmin} task
+                      {awaitingAdmin === 1 ? "" : "s"} waiting for admin
+                      approval
+                    </p>
+                  ) : null}
+
+                  <div className="mt-4">
+                    <p className="mb-2 text-xs font-medium">Your tasks</p>
+                    {myLinked.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No tasks assigned to you on this milestone yet.
+                      </p>
+                    ) : (
+                      <ul className="flex flex-col gap-2">
+                        {myLinked.map((task) => (
+                          <li
+                            key={task.id}
+                            className="rounded-lg border border-border px-3 py-3"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium">
+                                  {task.title}
+                                </p>
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                  Due {formatShortDate(task.dueDate)}
+                                </p>
+                              </div>
+                              <TaskStatusBadge status={task.status} />
+                            </div>
+                            {task.status === "done" ? (
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                Approved by admin
+                              </p>
+                            ) : (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {developerWorkStatuses.map((status) => (
+                                  <Button
+                                    key={status}
+                                    size="xs"
+                                    variant={
+                                      task.status === status
+                                        ? "secondary"
+                                        : "outline"
+                                    }
+                                    onClick={() => {
+                                      updateTaskStatus(task.id, status);
+                                      toast.success(
+                                        status === "review"
+                                          ? "Sent for admin approval"
+                                          : "Task updated"
+                                      );
+                                    }}
+                                  >
+                                    {status === "review"
+                                      ? "submit for approval"
+                                      : status.replace("_", " ")}
+                                  </Button>
+                                ))}
+                              </div>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  {linkedTasks.length > myLinked.length ? (
                     <p className="mt-3 text-xs text-muted-foreground">
-                      {linkedTasks.length} linked task
-                      {linkedTasks.length === 1 ? "" : "s"} ·{" "}
-                      {linkedTasks.filter((t) => t.status === "done").length} done
+                      +{linkedTasks.length - myLinked.length} other team task
+                      {linkedTasks.length - myLinked.length === 1 ? "" : "s"} on
+                      this milestone
                     </p>
                   ) : null}
                 </SectionCard>

@@ -47,19 +47,24 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
     .sort((a, b) => b.version - a.version);
   const thread = threads.find((t) => t.assignmentId === assignmentId);
   const threadMessages = messages.filter((m) => m.threadId === thread?.id);
-  const linkedMilestone =
-    assignment?.projectId === "p1"
-      ? milestones.find((m) => m.id === "m1")
-      : milestones.find(
-          (m) =>
-            m.projectId === assignment?.projectId && m.status !== "completed"
-        );
   const myProjectTasks = tasks.filter(
     (t) =>
       t.projectId === assignment?.projectId &&
       !t.parentId &&
       t.assigneeId === user.developerId
   );
+  const linkedMilestone =
+    milestones.find(
+      (m) =>
+        m.projectId === assignment?.projectId &&
+        myProjectTasks.some(
+          (t) => t.milestoneId === m.id && t.status !== "done"
+        )
+    ) ??
+    milestones.find(
+      (m) =>
+        m.projectId === assignment?.projectId && m.status !== "completed"
+    );
 
   const [title, setTitle] = useState("Work submission");
   const [description, setDescription] = useState("");
