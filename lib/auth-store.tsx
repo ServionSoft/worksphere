@@ -11,6 +11,12 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import {
+  fetchMe,
+  sessionUserFromMe,
+  type AuthMeResponse,
+} from "@/lib/api/auth";
+import { isApiDataSource } from "@/lib/data-source";
+import {
   DEMO_PASSWORD,
   findDemoAccount,
   isValidEmail,
@@ -24,6 +30,10 @@ import {
   writeSessionToStorage,
   type AuthSession,
 } from "@/lib/auth-session";
+import {
+  getSupabaseBrowserClient,
+  isSupabaseConfigured,
+} from "@/lib/supabase/client";
 import type { AppRole, PortalKind, SessionUser } from "@/lib/portal-types";
 
 export type PermissionAction =
@@ -75,6 +85,7 @@ interface AuthStoreValue {
   session: AuthSession | null;
   hydrated: boolean;
   isAuthenticated: boolean;
+  me: AuthMeResponse | null;
   login: (
     email: string,
     password: string,
@@ -84,24 +95,109 @@ interface AuthStoreValue {
   logout: () => void;
   can: (action: PermissionAction) => boolean;
   requestPasswordReset: (email: string) => Promise<{ ok: boolean; message: string }>;
+  refreshMe: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthStoreValue | null>(null);
 
+function useApiAuth(): boolean {
+  return isApiDataSource() && isSupabaseConfigured();
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [session, setSession] = useState<AuthSession | null>(null);
+  const [me, setMe] = useState<AuthMeResponse | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const apiAuth = useApiAuth();
+
+  const applySessionUser = useCallback(
+    (user: SessionUser, remember: boolean) => {
+      const next = createSession(user, remember);
+      writeSessionToStorage(next);
+      setSession(next);
+      return next;
+    },
+    []
+  );
+
+  const refreshMe = useCallback(async () => {
+    if (!apiAuth) return;
+    try {
+      const data = await fetchMe();
+      setMe(data);
+      if (session?.user) {
+        const mapped = sessionUserFromMe(data, session.portal);
+        if (mapped) {
+          applySessionUser(mapped, session.remember);
+        }
+      }
+    } catch {
+      /* session may be stale; login flow handles errors */
+    }
+  }, [apiAuth, session, applySessionUser]);
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect -- demo client session rehydrate */
-    setSession(readSessionFromStorage());
-    setHydrated(true);
-    /* eslint-enable react-hooks/set-state-in-effect */
-  }, []);
+    let cancelled = false;
+
+    async function hydrate() {
+      if (!apiAuth) {
+        if (!cancelled) {
+          setSession(readSessionFromStorage());
+          setHydrated(true);
+        }
+        return;
+      }
+
+      const supabase = getSupabaseBrowserClient();
+      if (!supabase) {
+        if (!cancelled) setHydrated(true);
+        return;
+      }
+
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) {
+        clearSessionStorage();
+        if (!cancelled) {
+          setSession(null);
+          setMe(null);
+          setHydrated(true);
+        }
+        return;
+      }
+
+      try {
+        const meData = await fetchMe();
+        if (cancelled) return;
+        setMe(meData);
+        const stored = readSessionFromStorage();
+        const portal = stored?.portal ?? "admin";
+        const user = sessionUserFromMe(meData, portal);
+        if (user) {
+          applySessionUser(user, stored?.remember ?? true);
+        } else {
+          clearSessionStorage();
+          setSession(null);
+        }
+      } catch {
+        if (!cancelled) {
+          clearSessionStorage();
+          setSession(null);
+          setMe(null);
+        }
+      } finally {
+        if (!cancelled) setHydrated(true);
+      }
+    }
+
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiAuth, applySessionUser]);
 
   useEffect(() => {
-    if (!session) return;
+    if (!session || apiAuth) return;
     const remaining = session.expiresAt - Date.now();
     if (remaining <= 0) {
       clearSessionStorage();
@@ -114,7 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       router.replace("/login?reason=expired");
     }, remaining);
     return () => window.clearTimeout(timer);
-  }, [session, router]);
+  }, [session, router, apiAuth]);
 
   const login = useCallback(
     async (
@@ -123,8 +219,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       portal: PortalKind,
       remember: boolean
     ): Promise<LoginResult> => {
-      await new Promise((r) => setTimeout(r, 450));
-
       if (!email.trim() || !password) {
         return { ok: false, error: "Email and password are required." };
       }
@@ -132,30 +226,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { ok: false, error: "Enter a valid email address." };
       }
 
-      const account = findDemoAccount(email);
-      if (!account || account.password !== password) {
-        return { ok: false, error: "Invalid email or password." };
+      if (!apiAuth) {
+        await new Promise((r) => setTimeout(r, 450));
+        const account = findDemoAccount(email);
+        if (!account || account.password !== password) {
+          return { ok: false, error: "Invalid email or password." };
+        }
+        if (account.portal !== portal) {
+          return {
+            ok: false,
+            error: `This account belongs to the ${account.portal} portal. Select the correct portal to continue.`,
+          };
+        }
+        applySessionUser(account.user, remember);
+        return { ok: true, user: account.user };
       }
-      if (account.portal !== portal) {
+
+      const supabase = getSupabaseBrowserClient();
+      if (!supabase) {
         return {
           ok: false,
-          error: `This account belongs to the ${account.portal} portal. Select the correct portal to continue.`,
+          error:
+            "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
         };
       }
 
-      const next = createSession(account.user, remember);
-      writeSessionToStorage(next);
-      setSession(next);
-      return { ok: true, user: account.user };
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (error) {
+        return { ok: false, error: error.message || "Invalid email or password." };
+      }
+
+      try {
+        const meData = await fetchMe();
+        setMe(meData);
+        const user = sessionUserFromMe(meData, portal);
+        if (!user) {
+          await supabase.auth.signOut();
+          return {
+            ok: false,
+            error: `This account does not have ${portal} portal access.`,
+          };
+        }
+        applySessionUser(user, remember);
+        return { ok: true, user };
+      } catch (e) {
+        await supabase.auth.signOut();
+        const message =
+          e instanceof Error ? e.message : "Failed to load application profile.";
+        return { ok: false, error: message };
+      }
     },
-    []
+    [apiAuth, applySessionUser]
   );
 
   const logout = useCallback(() => {
     clearSessionStorage();
     setSession(null);
+    setMe(null);
+    if (apiAuth) {
+      void getSupabaseBrowserClient()?.auth.signOut();
+    }
     router.replace("/login");
-  }, [router]);
+  }, [router, apiAuth]);
 
   const can = useCallback(
     (action: PermissionAction) => {
@@ -165,27 +300,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [session]
   );
 
-  const requestPasswordReset = useCallback(async (email: string) => {
-    await new Promise((r) => setTimeout(r, 400));
-    if (!email.trim()) {
-      return { ok: false, message: "Email is required." };
-    }
-    if (!isValidEmail(email)) {
-      return { ok: false, message: "Enter a valid email address." };
-    }
-    const account = findDemoAccount(email);
-    if (!account) {
+  const requestPasswordReset = useCallback(
+    async (email: string) => {
+      if (!email.trim()) {
+        return { ok: false, message: "Email is required." };
+      }
+      if (!isValidEmail(email)) {
+        return { ok: false, message: "Enter a valid email address." };
+      }
+
+      if (!apiAuth) {
+        await new Promise((r) => setTimeout(r, 400));
+        const account = findDemoAccount(email);
+        if (!account) {
+          return {
+            ok: true,
+            message:
+              "If this email is registered, a reset link would be sent. Demo mode: no email is actually delivered.",
+          };
+        }
+        return {
+          ok: true,
+          message: `Demo reset for ${account.email}. Use password “${DEMO_PASSWORD}” to sign in. No email was sent.`,
+        };
+      }
+
+      const supabase = getSupabaseBrowserClient();
+      if (!supabase) {
+        return { ok: false, message: "Supabase is not configured." };
+      }
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+      if (error) return { ok: false, message: error.message };
       return {
         ok: true,
-        message:
-          "If this email is registered, a reset link would be sent. Demo mode: no email is actually delivered.",
+        message: "If this email is registered, a reset link has been sent.",
       };
-    }
-    return {
-      ok: true,
-      message: `Demo reset for ${account.email}. Use password “${DEMO_PASSWORD}” to sign in. No email was sent.`,
-    };
-  }, []);
+    },
+    [apiAuth]
+  );
 
   const value = useMemo<AuthStoreValue>(
     () => ({
@@ -193,12 +345,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       hydrated,
       isAuthenticated: isSessionValid(session),
+      me,
       login,
       logout,
       can,
       requestPasswordReset,
+      refreshMe,
     }),
-    [session, hydrated, login, logout, can, requestPasswordReset]
+    [
+      session,
+      hydrated,
+      me,
+      login,
+      logout,
+      can,
+      requestPasswordReset,
+      refreshMe,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

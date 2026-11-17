@@ -39,6 +39,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { postAiChat } from "@/lib/api/platform-api";
+import { isApiDataSource } from "@/lib/data-source";
 import { demoId } from "@/lib/demo-clock";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/lib/workspace-store";
@@ -241,14 +243,26 @@ export function AiAssistant() {
       text: prompt,
       modeId,
     };
+    const assistantId = demoId("msg");
     const assistantMsg: ChatMessage = {
-      id: demoId("msg"),
+      id: assistantId,
       role: "assistant",
       text: mockReply(mode, prompt, project?.name),
       modeId,
     };
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput("");
+    if (isApiDataSource()) {
+      void postAiChat(prompt, project?.workspaceId)
+        .then((data) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, text: data.reply } : m
+            )
+          );
+        })
+        .catch(() => undefined);
+    }
     requestAnimationFrame(() => {
       listRef.current?.scrollTo({
         top: listRef.current.scrollHeight,

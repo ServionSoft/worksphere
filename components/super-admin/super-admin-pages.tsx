@@ -51,12 +51,16 @@ import {
   platformActivity,
   platformPlans,
   platformSubscriptions,
-  platformTenants,
   type PlatformActivity,
   type PlatformPlan,
   type PlatformSubscription,
   type PlatformTenant,
 } from "@/lib/mock-platform";
+import {
+  usePlatformActivityData,
+  usePlatformSubscriptionsData,
+  usePlatformTenantsData,
+} from "@/lib/platform-data";
 import { formatCurrency, formatDate, formatRelativeTime } from "@/lib/format";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import { cn } from "@/lib/utils";
@@ -103,6 +107,7 @@ function statusBadge(status: TenantStatus | string) {
 }
 
 function useTenantDirectory() {
+  const { tenants: baseTenants, apiMode } = usePlatformTenantsData();
   const [statusOverrides, setStatusOverrides] = useLocalStorage<
     Record<string, TenantStatus>
   >("worksphere.platform.tenant-status", {});
@@ -112,26 +117,32 @@ function useTenantDirectory() {
 
   const tenants = useMemo(
     () =>
-      platformTenants.map((t) => ({
+      baseTenants.map((t) => ({
         ...t,
         status: statusOverrides[t.id] ?? t.status,
         plan: planOverrides[t.id] ?? t.plan,
       })),
-    [statusOverrides, planOverrides]
+    [baseTenants, statusOverrides, planOverrides]
   );
 
   function setStatus(id: string, status: TenantStatus) {
     setStatusOverrides((prev) => ({ ...prev, [id]: status }));
     toast.success(
       status === "suspended" ? "Tenant suspended" : "Tenant activated",
-      { description: "Demo state saved to localStorage." }
+      {
+        description: apiMode
+          ? "Override applied locally; tenant list loaded from API."
+          : "Demo state saved to localStorage.",
+      }
     );
   }
 
   function setPlan(id: string, plan: TenantPlan) {
     setPlanOverrides((prev) => ({ ...prev, [id]: plan }));
     toast.success("Plan assignment updated", {
-      description: "Demo state saved to localStorage.",
+      description: apiMode
+        ? "Override applied locally; billing plans sync from API."
+        : "Demo state saved to localStorage.",
     });
   }
 
@@ -139,12 +150,21 @@ function useTenantDirectory() {
 }
 
 function usePlatformSubscriptions() {
-  const [subscriptions, setSubscriptions] = useLocalStorage<
-    PlatformSubscription[]
-  >("worksphere.platform.subscriptions", platformSubscriptions);
+  const { subscriptions: apiSubs, apiMode } = usePlatformSubscriptionsData();
+  const [localSubs, setLocalSubs] = useLocalStorage<PlatformSubscription[]>(
+    "worksphere.platform.subscriptions",
+    platformSubscriptions
+  );
+  const subscriptions = apiMode ? apiSubs : localSubs;
 
   function setStatus(id: string, status: SubscriptionStatus) {
-    setSubscriptions((prev) =>
+    if (apiMode) {
+      toast.success("Subscription status noted", {
+        description: "Source of truth is /api/platform/subscriptions.",
+      });
+      return;
+    }
+    setLocalSubs((prev) =>
       prev.map((s) => (s.id === id ? { ...s, status } : s))
     );
     toast.success("Subscription status updated", {
@@ -181,10 +201,12 @@ function usePlatformPlans() {
 }
 
 function usePlatformActivity() {
-  const [activity, setActivity] = useLocalStorage<PlatformActivity[]>(
+  const { activity: apiActivity, apiMode } = usePlatformActivityData();
+  const [localActivity, setLocalActivity] = useLocalStorage<PlatformActivity[]>(
     "worksphere.platform.activity",
     platformActivity
   );
+  const activity = apiMode ? apiActivity : localActivity;
 
   function addNote(input: {
     title: string;
@@ -198,9 +220,13 @@ function usePlatformActivity() {
       at: DEMO_NOW_ISO,
       severity: input.severity,
     };
-    setActivity((prev) => [entry, ...prev]);
+    if (!apiMode) {
+      setLocalActivity((prev) => [entry, ...prev]);
+    }
     toast.success("Activity note added", {
-      description: "Saved to localStorage.",
+      description: apiMode
+        ? "Local note only — platform activity is loaded from API."
+        : "Saved to localStorage.",
     });
   }
 

@@ -1,0 +1,139 @@
+import { apiFetch } from "@/lib/api/client";
+import type { AppRole, PortalKind, SessionUser } from "@/lib/portal-types";
+
+export interface AuthMeResponse {
+  profile: {
+    id: string;
+    authUserId: string;
+    email: string;
+    fullName: string;
+    isSuperAdmin: boolean;
+    developerProfileId: string | null;
+    clientIds: string[];
+    title?: string | null;
+  };
+  memberships: Array<{
+    workspaceId: string;
+    role: AppRole;
+    active: boolean;
+  }>;
+}
+
+export interface AuthWorkspaceRow {
+  id: string;
+  name: string;
+  status: string;
+  plan: string;
+  role: AppRole;
+  color?: string | null;
+  companyName?: string | null;
+  seats?: number;
+}
+
+function portalForRole(role: AppRole): PortalKind {
+  if (role === "client") return "client";
+  if (role === "developer") return "developer";
+  return "admin";
+}
+
+/** Map /api/auth/me + preferred portal into SessionUser. */
+export function sessionUserFromMe(
+  me: AuthMeResponse,
+  preferredPortal: PortalKind
+): SessionUser | null {
+  const { profile, memberships } = me;
+
+  if (profile.isSuperAdmin) {
+    return {
+      id: profile.id,
+      name: profile.fullName,
+      email: profile.email,
+      role: "super_admin",
+      portal: "admin",
+      title: profile.title ?? "Platform Super Admin",
+    };
+  }
+
+  const active = memberships.filter((m) => m.active);
+  const forPortal = active.find((m) => portalForRole(m.role) === preferredPortal);
+  const pick = forPortal ?? active[0];
+  if (!pick) {
+    if (profile.developerProfileId && preferredPortal === "developer") {
+      return {
+        id: profile.id,
+        name: profile.fullName,
+        email: profile.email,
+        role: "developer",
+        portal: "developer",
+        developerId: profile.developerProfileId,
+        title: profile.title ?? undefined,
+      };
+    }
+    return null;
+  }
+
+  if (portalForRole(pick.role) !== preferredPortal && preferredPortal !== "admin") {
+    return null;
+  }
+
+  return {
+    id: profile.id,
+    name: profile.fullName,
+    email: profile.email,
+    role: pick.role,
+    portal: portalForRole(pick.role),
+    clientId: profile.clientIds[0],
+    developerId: profile.developerProfileId ?? undefined,
+    title: profile.title ?? undefined,
+  };
+}
+
+export function fetchMe() {
+  return apiFetch<AuthMeResponse>("/api/auth/me");
+}
+
+export function fetchMyWorkspaces() {
+  return apiFetch<AuthWorkspaceRow[]>("/api/auth/workspaces");
+}
+
+export function bootstrapProfile(body: {
+  fullName?: string;
+  title?: string;
+}) {
+  return apiFetch<AuthMeResponse>("/api/auth/bootstrap", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function patchMe(body: { fullName?: string; title?: string; avatarUrl?: string }) {
+  return apiFetch<AuthMeResponse["profile"]>("/api/auth/me", {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function onboard(body: {
+  kind: "tenant_admin" | "client" | "developer";
+  workspaceName?: string;
+  companyName?: string;
+  clientName?: string;
+  developer?: {
+    title?: string;
+    skills?: string[];
+    bio?: string;
+    phone?: string;
+    country?: string;
+    hourlyRate?: number;
+  };
+}) {
+  return apiFetch<{
+    workspaceId?: string;
+    membership?: { workspaceId: string; role: AppRole };
+    developerProfileId?: string;
+    clientId?: string;
+  }>("/api/auth/onboarding", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}

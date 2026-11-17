@@ -10,6 +10,62 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { runApi } from "@/lib/api/run-api";
+import {
+  acceptApiFixedOpportunity,
+  acceptApiQuotation,
+  archiveApiProject,
+  authorizeApiSubmission,
+  authorizeApiTask,
+  clientReviewApiTask,
+  clientReviewApiWork,
+  confirmApiAssignment,
+  createApiClient,
+  createApiComment,
+  createApiDocument,
+  createApiInvoice,
+  createApiMilestone,
+  createApiOpportunity,
+  createApiProject,
+  createApiTask,
+  createApiThread,
+  createApiWorkSubmission,
+  createApiWorkspace,
+  deleteApiDocument,
+  deleteApiMilestone,
+  deleteApiOpportunity,
+  deleteApiProject,
+  deleteApiTask,
+  listApiWorkspaces,
+  loadWorkspaceBootstrap,
+  markApiEarningPaid,
+  markApiNotificationRead,
+  patchApiAssignment,
+  patchApiClient,
+  patchApiDeveloper,
+  patchApiInvoice,
+  patchApiMilestone,
+  patchApiMilestoneStatus,
+  patchApiOpportunity,
+  patchApiProject,
+  patchApiTask,
+  patchApiTaskStatus,
+  registerApiDeveloper,
+  rejectApiAssignment,
+  requestApiExtension,
+  resolveApiExtension,
+  reviewApiWorkSubmission,
+  saveApiOpportunity,
+  sendApiMessage,
+  setApiDeveloperStatus,
+  setApiOpportunityStatus,
+  submitApiQuotation,
+  unsaveApiOpportunity,
+  type WorkspaceBootstrap,
+} from "@/lib/api/workspace-api";
+import { setApiWorkspaceId } from "@/lib/api/client";
+import { useAuth } from "@/lib/auth-store";
+import { isApiDataSource } from "@/lib/data-source";
 import { DEMO_TS, demoId } from "@/lib/demo-clock";
 import {
   buildKpis,
@@ -40,6 +96,7 @@ import {
   developerProfiles as seedDevelopers,
 } from "@/lib/mock-portals";
 import {
+  clearWorkspaceSnapshot,
   loadWorkspaceSnapshot,
   saveWorkspaceSnapshot,
 } from "@/lib/store-persist";
@@ -355,8 +412,82 @@ function seedState() {
   };
 }
 
+function applyBootstrap(
+  data: WorkspaceBootstrap,
+  setters: {
+    setWorkspaceDirectory: React.Dispatch<React.SetStateAction<Workspace[]>>;
+    setWorkspaceIdState: React.Dispatch<React.SetStateAction<string>>;
+    setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+    setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
+    setMilestones: React.Dispatch<React.SetStateAction<Milestone[]>>;
+    setDocuments: React.Dispatch<React.SetStateAction<ProjectDocument[]>>;
+    setComments: React.Dispatch<React.SetStateAction<ProjectComment[]>>;
+    setSubmissions: React.Dispatch<React.SetStateAction<Submission[]>>;
+    setActivity: React.Dispatch<React.SetStateAction<ActivityItem[]>>;
+    setOpportunities: React.Dispatch<
+      React.SetStateAction<MarketplaceOpportunity[]>
+    >;
+    setQuotations: React.Dispatch<React.SetStateAction<Quotation[]>>;
+    setAssignments: React.Dispatch<React.SetStateAction<DeveloperAssignment[]>>;
+    setWorkSubmissions: React.Dispatch<
+      React.SetStateAction<WorkSubmissionVersion[]>
+    >;
+    setThreads: React.Dispatch<React.SetStateAction<MessageThread[]>>;
+    setMessages: React.Dispatch<React.SetStateAction<PortalMessage[]>>;
+    setInvoices: React.Dispatch<React.SetStateAction<Invoice[]>>;
+    setEarnings: React.Dispatch<React.SetStateAction<EarningRecord[]>>;
+    setPortalNotifications: React.Dispatch<
+      React.SetStateAction<PortalNotification[]>
+    >;
+    setDevelopers: React.Dispatch<React.SetStateAction<DeveloperProfile[]>>;
+    setSaved: React.Dispatch<React.SetStateAction<SavedOpportunity[]>>;
+    setClients: React.Dispatch<React.SetStateAction<Client[]>>;
+    setTeam: React.Dispatch<React.SetStateAction<TeamMember[]>>;
+  },
+  directory?: Workspace[]
+) {
+  if (directory) setters.setWorkspaceDirectory(directory);
+  else {
+    setters.setWorkspaceDirectory((prev) => {
+      const exists = prev.some((w) => w.id === data.workspace.id);
+      return exists
+        ? prev.map((w) => (w.id === data.workspace.id ? data.workspace : w))
+        : [...prev, data.workspace];
+    });
+  }
+  setters.setWorkspaceIdState(data.workspace.id);
+  setApiWorkspaceId(data.workspace.id);
+  setters.setProjects(data.projects);
+  setters.setTasks(data.tasks.map(normalizeTaskClientGate));
+  setters.setMilestones(data.milestones);
+  setters.setDocuments(data.documents);
+  setters.setComments(data.comments);
+  setters.setSubmissions(data.submissions);
+  setters.setActivity(data.activity);
+  setters.setOpportunities(data.opportunities);
+  setters.setQuotations(data.quotations);
+  setters.setAssignments(data.assignments);
+  setters.setWorkSubmissions(data.workSubmissions);
+  setters.setThreads(data.threads);
+  setters.setMessages(data.messages);
+  setters.setInvoices(data.invoices);
+  setters.setEarnings(data.earnings);
+  setters.setPortalNotifications(data.portalNotifications);
+  setters.setDevelopers(data.developers);
+  setters.setSaved(
+    data.savedOpportunityIds.map((opportunityId) => ({
+      developerId: "",
+      opportunityId,
+    }))
+  );
+  setters.setClients(data.clients);
+  setters.setTeam(data.team);
+}
+
 export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   const seed = useMemo(() => seedState(), []);
+  const apiMode = isApiDataSource();
+  const { isAuthenticated, hydrated: authHydrated, user } = useAuth();
   const [hydrated, setHydrated] = useState(false);
   const [workspaceId, setWorkspaceIdState] = useState(seed.workspaceId);
   const [workspaceDirectory, setWorkspaceDirectory] = useState<Workspace[]>(
@@ -365,7 +496,8 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   const workspaceIdRef = useRef(workspaceId);
   useEffect(() => {
     workspaceIdRef.current = workspaceId;
-  }, [workspaceId]);
+    if (apiMode) setApiWorkspaceId(workspaceId);
+  }, [workspaceId, apiMode]);
   const [projects, setProjects] = useState<Project[]>(seed.projects);
   const [tasks, setTasks] = useState<Task[]>(seed.tasks);
   const [milestones, setMilestones] = useState<Milestone[]>(seed.milestones);
@@ -391,65 +523,137 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   const [team, setTeam] = useState<TeamMember[]>(seed.team);
   const skipPersist = useRef(true);
 
-  useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect -- demo localStorage rehydrate */
-    const snap = loadWorkspaceSnapshot();
-    if (snap) {
-      setWorkspaceIdState(snap.workspaceId || seed.workspaceId);
-      if (Array.isArray(snap.workspaces) && snap.workspaces.length > 0) {
-        setWorkspaceDirectory(snap.workspaces as Workspace[]);
-      }
-      if (Array.isArray(snap.projects)) setProjects(snap.projects as Project[]);
-      if (Array.isArray(snap.tasks)) {
-        setTasks((snap.tasks as Task[]).map(normalizeTaskClientGate));
-      }
-      if (Array.isArray(snap.milestones))
-        setMilestones(snap.milestones as Milestone[]);
-      if (Array.isArray(snap.documents))
-        setDocuments(snap.documents as ProjectDocument[]);
-      if (Array.isArray(snap.comments))
-        setComments(snap.comments as ProjectComment[]);
-      if (Array.isArray(snap.submissions))
-        setSubmissions(snap.submissions as Submission[]);
-      if (Array.isArray(snap.activity))
-        setActivity(snap.activity as ActivityItem[]);
-      if (Array.isArray(snap.opportunities))
-        setOpportunities(snap.opportunities as MarketplaceOpportunity[]);
-      if (Array.isArray(snap.quotations))
-        setQuotations(snap.quotations as Quotation[]);
-      if (Array.isArray(snap.assignments))
-        setAssignments(snap.assignments as DeveloperAssignment[]);
-      if (Array.isArray(snap.workSubmissions))
-        setWorkSubmissions(snap.workSubmissions as WorkSubmissionVersion[]);
-      if (Array.isArray(snap.threads))
-        setThreads(snap.threads as MessageThread[]);
-      if (Array.isArray(snap.messages))
-        setMessages(snap.messages as PortalMessage[]);
-      if (Array.isArray(snap.invoices)) setInvoices(snap.invoices as Invoice[]);
-      if (Array.isArray(snap.earnings))
-        setEarnings(snap.earnings as EarningRecord[]);
-      if (Array.isArray(snap.portalNotifications))
-        setPortalNotifications(
-          (snap.portalNotifications as PortalNotification[]).map((n) => ({
-            ...n,
-            workspaceId: n.workspaceId || "ws1",
-          }))
-        );
-      if (Array.isArray(snap.developers))
-        setDevelopers(snap.developers as DeveloperProfile[]);
-      if (Array.isArray(snap.saved)) setSaved(snap.saved as SavedOpportunity[]);
-      if (Array.isArray(snap.clients)) setClients(snap.clients as Client[]);
-      if (Array.isArray(snap.team)) setTeam(snap.team as TeamMember[]);
-    }
-    setHydrated(true);
-    /* eslint-enable react-hooks/set-state-in-effect */
-    queueMicrotask(() => {
-      skipPersist.current = false;
-    });
-  }, [seed]);
+  const bootstrapSetters = useMemo(
+    () => ({
+      setWorkspaceDirectory,
+      setWorkspaceIdState,
+      setProjects,
+      setTasks,
+      setMilestones,
+      setDocuments,
+      setComments,
+      setSubmissions,
+      setActivity,
+      setOpportunities,
+      setQuotations,
+      setAssignments,
+      setWorkSubmissions,
+      setThreads,
+      setMessages,
+      setInvoices,
+      setEarnings,
+      setPortalNotifications,
+      setDevelopers,
+      setSaved,
+      setClients,
+      setTeam,
+    }),
+    []
+  );
+
+  const reloadBootstrap = useCallback(
+    async (id: string, directory?: Workspace[]) => {
+      const data = await loadWorkspaceBootstrap(id);
+      applyBootstrap(data, bootstrapSetters, directory);
+    },
+    [bootstrapSetters]
+  );
 
   useEffect(() => {
-    if (!hydrated || skipPersist.current) return;
+    let cancelled = false;
+
+    async function hydrate() {
+      if (apiMode) {
+        clearWorkspaceSnapshot();
+        if (!authHydrated) return;
+        if (!isAuthenticated) {
+          if (!cancelled) {
+            setHydrated(true);
+          }
+          return;
+        }
+        try {
+          const directory = await listApiWorkspaces();
+          if (cancelled) return;
+          if (directory.length === 0) {
+            setWorkspaceDirectory([]);
+            setHydrated(true);
+            return;
+          }
+          const preferred =
+            directory.find((w) => w.id === workspaceIdRef.current)?.id ??
+            directory[0].id;
+          await reloadBootstrap(preferred, directory);
+        } catch {
+          /* auth/profile may still be provisioning */
+        } finally {
+          if (!cancelled) setHydrated(true);
+        }
+        return;
+      }
+
+      const snap = loadWorkspaceSnapshot();
+      if (snap) {
+        setWorkspaceIdState(snap.workspaceId || seed.workspaceId);
+        if (Array.isArray(snap.workspaces) && snap.workspaces.length > 0) {
+          setWorkspaceDirectory(snap.workspaces as Workspace[]);
+        }
+        if (Array.isArray(snap.projects)) setProjects(snap.projects as Project[]);
+        if (Array.isArray(snap.tasks)) {
+          setTasks((snap.tasks as Task[]).map(normalizeTaskClientGate));
+        }
+        if (Array.isArray(snap.milestones))
+          setMilestones(snap.milestones as Milestone[]);
+        if (Array.isArray(snap.documents))
+          setDocuments(snap.documents as ProjectDocument[]);
+        if (Array.isArray(snap.comments))
+          setComments(snap.comments as ProjectComment[]);
+        if (Array.isArray(snap.submissions))
+          setSubmissions(snap.submissions as Submission[]);
+        if (Array.isArray(snap.activity))
+          setActivity(snap.activity as ActivityItem[]);
+        if (Array.isArray(snap.opportunities))
+          setOpportunities(snap.opportunities as MarketplaceOpportunity[]);
+        if (Array.isArray(snap.quotations))
+          setQuotations(snap.quotations as Quotation[]);
+        if (Array.isArray(snap.assignments))
+          setAssignments(snap.assignments as DeveloperAssignment[]);
+        if (Array.isArray(snap.workSubmissions))
+          setWorkSubmissions(snap.workSubmissions as WorkSubmissionVersion[]);
+        if (Array.isArray(snap.threads))
+          setThreads(snap.threads as MessageThread[]);
+        if (Array.isArray(snap.messages))
+          setMessages(snap.messages as PortalMessage[]);
+        if (Array.isArray(snap.invoices)) setInvoices(snap.invoices as Invoice[]);
+        if (Array.isArray(snap.earnings))
+          setEarnings(snap.earnings as EarningRecord[]);
+        if (Array.isArray(snap.portalNotifications))
+          setPortalNotifications(
+            (snap.portalNotifications as PortalNotification[]).map((n) => ({
+              ...n,
+              workspaceId: n.workspaceId || "ws1",
+            }))
+          );
+        if (Array.isArray(snap.developers))
+          setDevelopers(snap.developers as DeveloperProfile[]);
+        if (Array.isArray(snap.saved)) setSaved(snap.saved as SavedOpportunity[]);
+        if (Array.isArray(snap.clients)) setClients(snap.clients as Client[]);
+        if (Array.isArray(snap.team)) setTeam(snap.team as TeamMember[]);
+      }
+      if (!cancelled) setHydrated(true);
+      queueMicrotask(() => {
+        skipPersist.current = false;
+      });
+    }
+
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiMode, authHydrated, isAuthenticated, reloadBootstrap, seed, user?.id]);
+
+  useEffect(() => {
+    if (apiMode || !hydrated || skipPersist.current) return;
     saveWorkspaceSnapshot({
       workspaceId,
       workspaces: workspaceDirectory,
@@ -476,6 +680,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       searchQuery,
     });
   }, [
+    apiMode,
     hydrated,
     workspaceId,
     workspaceDirectory,
@@ -588,9 +793,15 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  const setWorkspaceId = useCallback((id: string) => {
-    setWorkspaceIdState(id);
-  }, []);
+  const setWorkspaceId = useCallback(
+    (id: string) => {
+      setWorkspaceIdState(id);
+      if (apiMode) {
+        runApi(() => reloadBootstrap(id), "Load workspace");
+      }
+    },
+    [apiMode, reloadBootstrap]
+  );
 
   const createWorkspace = useCallback(
     (input: {
@@ -619,30 +830,60 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         body: created.name,
         href: "/settings",
       });
+      if (apiMode) {
+        runApi(async () => {
+          const remote = await createApiWorkspace(input);
+          setWorkspaceDirectory((prev) =>
+            prev.map((w) => (w.id === created.id ? remote : w))
+          );
+          setWorkspaceIdState(remote.id);
+          await reloadBootstrap(remote.id);
+        }, "Create workspace");
+      }
       return created;
     },
-    [notify]
+    [apiMode, notify, reloadBootstrap]
   );
 
-  const addProject = useCallback((project: Project) => {
-    setProjects((prev) => [project, ...prev]);
-    pushActivity(setActivity, {
-      type: "project_update",
-      title: "Project created",
-      description: project.name,
-      actorName: currentUser.name,
-      projectId: project.id,
-      projectName: project.name,
-    });
-  }, []);
+  const addProject = useCallback(
+    (project: Project) => {
+      setProjects((prev) => [project, ...prev]);
+      pushActivity(setActivity, {
+        type: "project_update",
+        title: "Project created",
+        description: project.name,
+        actorName: currentUser.name,
+        projectId: project.id,
+        projectName: project.name,
+      });
+      runApi(async () => {
+        const remote = await createApiProject(
+          workspaceIdRef.current,
+          project
+        );
+        setProjects((prev) =>
+          prev.map((p) => (p.id === project.id ? remote : p))
+        );
+      }, "Create project");
+    },
+    []
+  );
 
   const updateProject = useCallback((id: string, patch: Partial<Project>) => {
     setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+    runApi(
+      () => patchApiProject(workspaceIdRef.current, id, patch),
+      "Update project"
+    );
   }, []);
 
   const archiveProject = useCallback((id: string) => {
     setProjects((prev) =>
       prev.map((p) => (p.id === id ? { ...p, archived: true, status: "on_hold" as ProjectStatus } : p))
+    );
+    runApi(
+      () => archiveApiProject(workspaceIdRef.current, id),
+      "Archive project"
     );
   }, []);
 
@@ -650,6 +891,10 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
     setProjects((prev) => prev.filter((p) => p.id !== id));
     setTasks((prev) => prev.filter((t) => t.projectId !== id));
     setMilestones((prev) => prev.filter((m) => m.projectId !== id));
+    runApi(
+      () => deleteApiProject(workspaceIdRef.current, id),
+      "Delete project"
+    );
   }, []);
 
   const syncMilestoneAfterTasks = useCallback(
@@ -709,6 +954,10 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         return next;
       });
       if (!touched) return;
+      runApi(
+        () => authorizeApiTask(workspaceIdRef.current, taskId),
+        "Authorize task"
+      );
       const project = projects.find((p) => p.id === touched!.projectId);
       notify({
         portal: "client",
@@ -771,6 +1020,16 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         return next;
       });
       if (!touched) return;
+      runApi(
+        () =>
+          clientReviewApiTask(
+            workspaceIdRef.current,
+            taskId,
+            decision,
+            note
+          ),
+        "Client review task"
+      );
       notify({
         portal: "admin",
         userId: "u1",
@@ -831,6 +1090,19 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         return next;
       });
 
+      if (
+        touched &&
+        !(
+          status === "done" &&
+          taskNeedsClientApproval(touched) &&
+          touched.clientApprovalStatus !== "approved"
+        )
+      ) {
+        runApi(
+          () => patchApiTaskStatus(workspaceIdRef.current, taskId, status),
+          "Update task status"
+        );
+      }
       if (touched && status === "review") {
         notify({
           portal: "admin",
@@ -851,6 +1123,10 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
     setTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, ...patch } : t))
     );
+    runApi(
+      () => patchApiTask(workspaceIdRef.current, taskId, patch),
+      "Update task"
+    );
   }, []);
 
   const addTask = useCallback((task: Task) => {
@@ -863,6 +1139,10 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       projectId: task.projectId,
       projectName: task.projectName,
     });
+    runApi(async () => {
+      const remote = await createApiTask(workspaceIdRef.current, task);
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? remote : t)));
+    }, "Create task");
   }, []);
 
   const deleteTask = useCallback((taskId: string) => {
@@ -879,16 +1159,33 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
           dependsOn: (t.dependsOn ?? []).filter((id) => !removed.has(id)),
         }));
     });
+    runApi(
+      () => deleteApiTask(workspaceIdRef.current, taskId),
+      "Delete task"
+    );
   }, []);
 
   const addMilestone = useCallback((milestone: Milestone) => {
     setMilestones((prev) => [milestone, ...prev]);
+    runApi(async () => {
+      const remote = await createApiMilestone(
+        workspaceIdRef.current,
+        milestone
+      );
+      setMilestones((prev) =>
+        prev.map((m) => (m.id === milestone.id ? remote : m))
+      );
+    }, "Create milestone");
   }, []);
 
   const updateMilestone = useCallback(
     (id: string, patch: Partial<Milestone>) => {
       setMilestones((prev) =>
         prev.map((m) => (m.id === id ? { ...m, ...patch } : m))
+      );
+      runApi(
+        () => patchApiMilestone(workspaceIdRef.current, id, patch),
+        "Update milestone"
       );
     },
     []
@@ -913,20 +1210,31 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
           };
         })
       );
+      runApi(
+        () =>
+          patchApiMilestoneStatus(
+            workspaceIdRef.current,
+            milestoneId,
+            status
+          ),
+        "Update milestone status"
+      );
     },
     []
   );
 
   const deleteMilestone = useCallback((id: string) => {
     setMilestones((prev) => prev.filter((m) => m.id !== id));
+    runApi(
+      () => deleteApiMilestone(workspaceIdRef.current, id),
+      "Delete milestone"
+    );
   }, []);
 
   const addComment = useCallback(
     (comment: Omit<ProjectComment, "id" | "createdAt">) => {
-      setComments((prev) => [
-        { ...comment, id: demoId("cmt"), createdAt: DEMO_TS },
-        ...prev,
-      ]);
+      const local = { ...comment, id: demoId("cmt"), createdAt: DEMO_TS };
+      setComments((prev) => [local, ...prev]);
       const project = projects.find((p) => p.id === comment.projectId);
       pushActivity(setActivity, {
         type: "comment",
@@ -936,22 +1244,36 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         projectId: comment.projectId,
         projectName: project?.name,
       });
+      runApi(async () => {
+        const remote = await createApiComment(workspaceIdRef.current, comment);
+        setComments((prev) =>
+          prev.map((c) => (c.id === local.id ? remote : c))
+        );
+      }, "Add comment");
     },
     [projects]
   );
 
   const addDocument = useCallback(
     (doc: Omit<ProjectDocument, "id" | "uploadedAt">) => {
-      setDocuments((prev) => [
-        { ...doc, id: demoId("doc"), uploadedAt: DEMO_TS },
-        ...prev,
-      ]);
+      const local = { ...doc, id: demoId("doc"), uploadedAt: DEMO_TS };
+      setDocuments((prev) => [local, ...prev]);
+      runApi(async () => {
+        const remote = await createApiDocument(workspaceIdRef.current, doc);
+        setDocuments((prev) =>
+          prev.map((d) => (d.id === local.id ? remote : d))
+        );
+      }, "Add document");
     },
     []
   );
 
   const deleteDocument = useCallback((id: string) => {
     setDocuments((prev) => prev.filter((d) => d.id !== id));
+    runApi(
+      () => deleteApiDocument(workspaceIdRef.current, id),
+      "Delete document"
+    );
   }, []);
 
   const updateSubmissionStatus = useCallback(
@@ -1042,6 +1364,15 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
           href: "/client/approvals",
         });
       }
+      runApi(
+        () =>
+          authorizeApiSubmission(
+            workspaceIdRef.current,
+            workSubmissionId,
+            note
+          ),
+        "Authorize client review"
+      );
     },
     [workSubmissions, projects, resolveClientUserId, notify]
   );
@@ -1095,10 +1426,18 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
 
   const addClient = useCallback((client: Client) => {
     setClients((prev) => [client, ...prev]);
+    runApi(async () => {
+      const remote = await createApiClient(workspaceIdRef.current, client);
+      setClients((prev) => prev.map((c) => (c.id === client.id ? remote : c)));
+    }, "Create client");
   }, []);
 
   const updateClient = useCallback((id: string, patch: Partial<Client>) => {
     setClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+    runApi(
+      () => patchApiClient(workspaceIdRef.current, id, patch),
+      "Update client"
+    );
   }, []);
 
   const addTeamMember = useCallback((member: TeamMember) => {
@@ -1137,6 +1476,15 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         body: opp.title,
         href: `/developer/marketplace/${id}`,
       });
+      runApi(async () => {
+        const remote = await createApiOpportunity(
+          workspaceIdRef.current,
+          opp
+        );
+        setOpportunities((prev) =>
+          prev.map((o) => (o.id === id ? remote : o))
+        );
+      }, "Create opportunity");
     },
     [notify]
   );
@@ -1145,6 +1493,10 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
     (id: string, patch: Partial<MarketplaceOpportunity>) => {
       setOpportunities((prev) =>
         prev.map((o) => (o.id === id ? { ...o, ...patch } : o))
+      );
+      runApi(
+        () => patchApiOpportunity(workspaceIdRef.current, id, patch),
+        "Update opportunity"
       );
     },
     []
@@ -1155,12 +1507,20 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       setOpportunities((prev) =>
         prev.map((o) => (o.id === id ? { ...o, status } : o))
       );
+      runApi(
+        () => setApiOpportunityStatus(workspaceIdRef.current, id, status),
+        "Update opportunity status"
+      );
     },
     []
   );
 
   const deleteOpportunity = useCallback((id: string) => {
     setOpportunities((prev) => prev.filter((o) => o.id !== id));
+    runApi(
+      () => deleteApiOpportunity(workspaceIdRef.current, id),
+      "Delete opportunity"
+    );
   }, []);
 
   const saveOpportunity = useCallback(
@@ -1170,20 +1530,29 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
           ? prev
           : [...prev, { developerId, opportunityId }]
       );
+      runApi(
+        () => saveApiOpportunity(workspaceIdRef.current, opportunityId),
+        "Save opportunity"
+      );
     },
     []
   );
 
   const unsaveOpportunity = useCallback((opportunityId: string) => {
     setSaved((prev) => prev.filter((s) => s.opportunityId !== opportunityId));
+    runApi(
+      () => unsaveApiOpportunity(workspaceIdRef.current, opportunityId),
+      "Unsave opportunity"
+    );
   }, []);
 
   const submitQuotation = useCallback(
     (quotation: Omit<Quotation, "id" | "submittedAt" | "status">) => {
+      const localId = demoId("q");
       setQuotations((prev) => [
         {
           ...quotation,
-          id: demoId("q"),
+          id: localId,
           submittedAt: DEMO_TS,
           status: "pending",
         },
@@ -1196,6 +1565,15 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         body: `${quotation.developerName} quoted $${quotation.price}`,
         href: "/marketplace",
       });
+      runApi(async () => {
+        const remote = await submitApiQuotation(
+          workspaceIdRef.current,
+          quotation
+        );
+        setQuotations((prev) =>
+          prev.map((q) => (q.id === localId ? remote : q))
+        );
+      }, "Submit quotation");
     },
     [notify]
   );
@@ -1265,6 +1643,21 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         body: opp.title,
         href: "/developer/my-tasks",
       });
+      runApi(async () => {
+        const remote = await acceptApiQuotation(
+          workspaceIdRef.current,
+          quotationId
+        );
+        setQuotations((prev) =>
+          prev.map((q) =>
+            q.id === quotationId ? remote.quotation : q
+          )
+        );
+        setAssignments((prev) => [
+          remote.assignment,
+          ...prev.filter((a) => a.id !== assignment.id),
+        ]);
+      }, "Accept quotation");
     },
     [quotations, opportunities, resolveDeveloperUserId, notify]
   );
@@ -1317,11 +1710,25 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         body: `${developerName} accepted ${opp.title}`,
         href: "/marketplace",
       });
+      runApi(async () => {
+        const remote = await acceptApiFixedOpportunity(
+          workspaceIdRef.current,
+          opportunityId,
+          developerId
+        );
+        setAssignments((prev) =>
+          prev.map((a) => (a.id === assignment.id ? remote : a))
+        );
+      }, "Accept fixed opportunity");
     },
     [opportunities, notify]
   );
 
   const confirmAssignment = useCallback((assignmentId: string) => {
+    runApi(
+      () => confirmApiAssignment(workspaceIdRef.current, assignmentId),
+      "Confirm assignment"
+    );
     setAssignments((prev) =>
       prev.map((a) =>
         a.id === assignmentId
@@ -1358,6 +1765,10 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         )
       );
     }
+    runApi(
+      () => rejectApiAssignment(workspaceIdRef.current, assignmentId),
+      "Reject assignment"
+    );
   }, [assignments]);
 
   const updateAssignment = useCallback(
@@ -1374,6 +1785,10 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
           }
           return next;
         })
+      );
+      runApi(
+        () => patchApiAssignment(workspaceIdRef.current, id, patch),
+        "Update assignment"
       );
     },
     []
@@ -1402,6 +1817,16 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         body: reason,
         href: "/marketplace",
       });
+      runApi(
+        () =>
+          requestApiExtension(
+            workspaceIdRef.current,
+            assignmentId,
+            requestedDeadline,
+            reason
+          ),
+        "Request extension"
+      );
     },
     [notify]
   );
@@ -1430,6 +1855,15 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
             },
           };
         })
+      );
+      runApi(
+        () =>
+          resolveApiExtension(
+            workspaceIdRef.current,
+            assignmentId,
+            decision
+          ),
+        "Resolve extension"
       );
     },
     []
@@ -1506,6 +1940,24 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         actorName: submission.submittedBy,
         projectId: submission.projectId,
       });
+      runApi(async () => {
+        const remote = await createApiWorkSubmission(workspaceIdRef.current, {
+          assignmentId: submission.assignmentId,
+          title: submission.title,
+          description: submission.description,
+          repoUrl: submission.repoUrl,
+          deployUrl: submission.deployUrl,
+          files: submission.files,
+          screenshots: submission.screenshots,
+          testingNotes: submission.testingNotes,
+          projectId: submission.projectId,
+          milestoneId: submission.milestoneId,
+          requiresClientApproval: submission.requiresClientApproval,
+        });
+        setWorkSubmissions((prev) =>
+          prev.map((w) => (w.id === createdId ? remote : w))
+        );
+      }, "Submit work");
     },
     [addSubmission, notify]
   );
@@ -1583,6 +2035,17 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       if (authorizeClient && status === "approved") {
         authorizeClientReview(workSubmissionId, reviewNote);
       }
+      runApi(
+        () =>
+          reviewApiWorkSubmission(
+            workspaceIdRef.current,
+            workSubmissionId,
+            status,
+            reviewNote,
+            authorizeClient
+          ),
+        "Review submission"
+      );
     },
     [
       workSubmissions,
@@ -1779,16 +2242,27 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
           href: `/developer/tasks/${work.assignmentId}`,
         });
       }
+      runApi(
+        () =>
+          clientReviewApiWork(
+            workspaceIdRef.current,
+            workSubmissionId,
+            decision,
+            note
+          ),
+        "Client review work"
+      );
     },
     [workSubmissions, assignments, resolveDeveloperUserId, notify, projects]
   );
 
   const sendMessage = useCallback(
     (message: Omit<PortalMessage, "id" | "createdAt" | "read">) => {
+      const localId = demoId("msg");
       setMessages((prev) => [
         {
           ...message,
-          id: demoId("msg"),
+          id: localId,
           createdAt: DEMO_TS,
           read: true,
         },
@@ -1801,6 +2275,12 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
             : t
         )
       );
+      runApi(async () => {
+        const remote = await sendApiMessage(workspaceIdRef.current, message);
+        setMessages((prev) =>
+          prev.map((m) => (m.id === localId ? remote : m))
+        );
+      }, "Send message");
     },
     []
   );
@@ -1817,6 +2297,10 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         },
         ...prev,
       ]);
+      runApi(async () => {
+        const remote = await createApiThread(workspaceIdRef.current, thread);
+        setThreads((prev) => prev.map((t) => (t.id === id ? remote : t)));
+      }, "Create thread");
       return id;
     },
     []
@@ -1827,6 +2311,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       setDevelopers((prev) =>
         prev.map((d) => (d.id === id ? { ...d, ...patch } : d))
       );
+      runApi(() => patchApiDeveloper(id, patch), "Update developer");
     },
     []
   );
@@ -1841,6 +2326,12 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         body: profile.name,
         href: "/team",
       });
+      runApi(async () => {
+        const remote = await registerApiDeveloper(profile);
+        setDevelopers((prev) =>
+          prev.map((d) => (d.id === profile.id ? remote : d))
+        );
+      }, "Register developer");
     },
     [notify]
   );
@@ -1861,6 +2352,10 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         body: "Your developer profile was updated.",
         href: "/developer/profile",
       });
+      runApi(
+        () => setApiDeveloperStatus(workspaceIdRef.current, id, status),
+        "Update developer status"
+      );
     },
     [developers, notify]
   );
@@ -1868,6 +2363,10 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   const markNotificationRead = useCallback((id: string) => {
     setPortalNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+    runApi(
+      () => markApiNotificationRead(workspaceIdRef.current, id),
+      "Mark notification read"
     );
   }, []);
 
@@ -1883,12 +2382,31 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
             : n
         )
       );
+      if (apiMode) {
+        portalNotifications
+          .filter(
+            (n) =>
+              n.portal === portal &&
+              n.userId === userId &&
+              (n.workspaceId || "ws1") === scopedWorkspace &&
+              !n.read
+          )
+          .forEach((n) => {
+            runApi(() => markApiNotificationRead(scopedWorkspace, n.id));
+          });
+      }
     },
-    []
+    [apiMode, portalNotifications]
   );
 
   const addInvoice = useCallback((invoice: Invoice) => {
     setInvoices((prev) => [invoice, ...prev]);
+    runApi(async () => {
+      const remote = await createApiInvoice(workspaceIdRef.current, invoice);
+      setInvoices((prev) =>
+        prev.map((i) => (i.id === invoice.id ? remote : i))
+      );
+    }, "Create invoice");
   }, []);
 
   const updateInvoice = useCallback((id: string, patch: Partial<Invoice>) => {
@@ -1902,6 +2420,10 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         return next;
       })
     );
+    runApi(
+      () => patchApiInvoice(workspaceIdRef.current, id, patch),
+      "Update invoice"
+    );
   }, []);
 
   const markEarningPaid = useCallback((id: string) => {
@@ -1910,9 +2432,22 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         e.id === id ? { ...e, status: "paid", paidAt: "2026-03-11" } : e
       )
     );
+    runApi(
+      () => markApiEarningPaid(workspaceIdRef.current, id),
+      "Mark earning paid"
+    );
   }, []);
 
   const resetDemoData = useCallback(() => {
+    if (apiMode) {
+      clearWorkspaceSnapshot();
+      runApi(
+        () => reloadBootstrap(workspaceIdRef.current),
+        "Reload workspace"
+      );
+      return;
+    }
+    // demo-only path below
     const next = seedState();
     skipPersist.current = true;
     setWorkspaceIdState(next.workspaceId);
@@ -1965,7 +2500,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         team: next.team,
       });
     });
-  }, []);
+  }, [apiMode, reloadBootstrap]);
 
   const value = useMemo<WorkspaceStoreValue>(
     () => ({
