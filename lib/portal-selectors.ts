@@ -178,6 +178,11 @@ export function clientDeliverableDisplayLabel(
   return "In review";
 }
 
+/** Task.assigneeId is profiles.id; SessionUser.id is the same profile id. */
+export function isTaskAssignedToUser(task: Task, user: SessionUser) {
+  return Boolean(task.assigneeId && task.assigneeId === user.id);
+}
+
 export function developerAssignments(
   assignments: DeveloperAssignment[],
   user: SessionUser
@@ -186,28 +191,41 @@ export function developerAssignments(
   return assignments.filter((a) => a.developerId === user.developerId);
 }
 
+/** Direct project tasks assigned to this developer (not marketplace assignments). */
+export function developerDirectTasks(tasks: Task[], user: SessionUser) {
+  if (!user.id) return [];
+  return tasks
+    .filter((t) => isTaskAssignedToUser(t, user) && !t.parentId)
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+}
+
 export function developerProjectIds(
   assignments: DeveloperAssignment[],
-  user: SessionUser
+  user: SessionUser,
+  tasks: Task[] = []
 ) {
-  return Array.from(
-    new Set(
-      developerAssignments(assignments, user)
-        .map((a) => a.projectId)
-        .filter((id): id is string => Boolean(id))
-    )
-  );
+  const fromAssignments = developerAssignments(assignments, user)
+    .map((a) => a.projectId)
+    .filter((id): id is string => Boolean(id));
+  const fromTasks = developerDirectTasks(tasks, user).map((t) => t.projectId);
+  return Array.from(new Set([...fromAssignments, ...fromTasks]));
 }
 
 export function developerProjects(
   projects: Project[],
   assignments: DeveloperAssignment[],
-  user: SessionUser
+  user: SessionUser,
+  tasks: Task[] = []
 ) {
-  const ids = developerProjectIds(assignments, user);
-  return projects
-    .filter((p) => ids.includes(p.id))
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  const ids = new Set(developerProjectIds(assignments, user, tasks));
+  // Prefer explicit marketplace + direct-task links. When the API has already
+  // scoped `projects` via project_members and client state has no links yet,
+  // fall back to the server-scoped list so membership-only access still works.
+  const linked = projects.filter((p) => ids.has(p.id));
+  if (linked.length > 0 || ids.size > 0) {
+    return linked.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  }
+  return [...projects].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }
 
 export function developerProjectTasks(tasks: Task[], projectId: string) {
@@ -221,10 +239,8 @@ export function developerMyTasks(
   projectId: string,
   user: SessionUser
 ) {
-  const developerId = user.developerId;
-  if (!developerId) return [];
-  return developerProjectTasks(tasks, projectId).filter(
-    (t) => t.assigneeId === developerId
+  return developerProjectTasks(tasks, projectId).filter((t) =>
+    isTaskAssignedToUser(t, user)
   );
 }
 

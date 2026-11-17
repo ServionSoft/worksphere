@@ -51,7 +51,7 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
     (t) =>
       t.projectId === assignment?.projectId &&
       !t.parentId &&
-      t.assigneeId === user.developerId
+      t.assigneeId === user.id
   );
   const linkedMilestone =
     milestones.find(

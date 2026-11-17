@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { formatRelativeTime, formatShortDate } from "@/lib/format";
-import type { Submission, SubmissionStatus } from "@/lib/types";
+import type { Submission, SubmissionStatus, Task } from "@/lib/types";
 import type { WorkSubmissionVersion } from "@/lib/portal-types";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 
@@ -47,6 +47,21 @@ type UnifiedItem =
       authorizedForClient: boolean;
       projectId?: string;
       submission: Submission;
+    }
+  | {
+      kind: "task";
+      id: string;
+      title: string;
+      description: string;
+      status: SubmissionStatus;
+      submittedBy: string;
+      submittedAt: string;
+      version?: number;
+      reviewerName?: string;
+      reviewNote?: string;
+      authorizedForClient: boolean;
+      projectId?: string;
+      task: Task;
     };
 
 export function ApprovalsCenter() {
@@ -54,10 +69,13 @@ export function ApprovalsCenter() {
     workSubmissions,
     submissions,
     projects,
+    tasks,
     reviewWorkSubmission,
     authorizeClientReview,
     authorizeSubmissionForClient,
+    authorizeTaskForClient,
     updateSubmissionStatus,
+    updateTaskStatus,
   } = useWorkspaceStore();
 
   const [filter, setFilter] = useState<Filter>("needs_review");
@@ -97,8 +115,44 @@ export function ApprovalsCenter() {
         submission: s,
       }));
 
-    const combined = [...workItems, ...submissionItems].sort((a, b) =>
-      b.submittedAt.localeCompare(a.submittedAt)
+    // Direct task submissions (developer set status → review)
+    const taskItems: UnifiedItem[] = tasks
+      .filter(
+        (t) =>
+          !t.parentId &&
+          (t.status === "review" ||
+            t.clientApprovalStatus === "revision_requested" ||
+            (t.authorizedForClient &&
+              t.clientApprovalStatus === "pending") ||
+            t.clientApprovalStatus === "approved")
+      )
+      .map((t) => {
+        let status: SubmissionStatus = "submitted";
+        if (t.clientApprovalStatus === "approved") status = "approved";
+        else if (
+          t.clientApprovalStatus === "revision_requested" ||
+          t.status === "in_progress"
+        )
+          status = "rejected";
+        else if (t.authorizedForClient && t.clientApprovalStatus === "pending")
+          status = "approved";
+        else if (t.status === "review") status = "submitted";
+        return {
+          kind: "task" as const,
+          id: t.id,
+          title: t.title,
+          description: t.description || `Assigned to ${t.assigneeName}`,
+          status,
+          submittedBy: t.assigneeName,
+          submittedAt: t.dueDate,
+          authorizedForClient: Boolean(t.authorizedForClient),
+          projectId: t.projectId,
+          task: t,
+        };
+      });
+
+    const combined = [...workItems, ...submissionItems, ...taskItems].sort(
+      (a, b) => b.submittedAt.localeCompare(a.submittedAt)
     );
 
     return combined.filter((item) => {
@@ -111,13 +165,17 @@ export function ApprovalsCenter() {
       if (filter === "rejected") return item.status === "rejected";
       return true;
     });
-  }, [workSubmissions, submissions, filter]);
+  }, [workSubmissions, submissions, tasks, filter]);
 
   function canAct(status: SubmissionStatus) {
     return status === "submitted" || status === "in_review" || status === "draft";
   }
 
   function markInReview(item: UnifiedItem) {
+    if (item.kind === "task") {
+      toast.success("Task already awaiting review", { description: item.title });
+      return;
+    }
     if (item.kind === "work") {
       reviewWorkSubmission(item.id, "in_review", notes[item.id]);
     } else {
@@ -127,6 +185,13 @@ export function ApprovalsCenter() {
   }
 
   function approve(item: UnifiedItem) {
+    if (item.kind === "task") {
+      authorizeTaskForClient(item.id);
+      toast.success("Approved & authorized for client", {
+        description: item.title,
+      });
+      return;
+    }
     if (item.kind === "work") {
       reviewWorkSubmission(item.id, "approved", notes[item.id]);
     } else {
@@ -141,6 +206,11 @@ export function ApprovalsCenter() {
       toast.error("Add revision notes before requesting changes");
       return;
     }
+    if (item.kind === "task") {
+      updateTaskStatus(item.id, "in_progress");
+      toast.success("Revision requested", { description: item.title });
+      return;
+    }
     if (item.kind === "work") {
       reviewWorkSubmission(item.id, "rejected", note);
     } else {
@@ -150,6 +220,13 @@ export function ApprovalsCenter() {
   }
 
   function authorizeClient(item: UnifiedItem) {
+    if (item.kind === "task") {
+      authorizeTaskForClient(item.id);
+      toast.success("Authorized for client review", {
+        description: item.title,
+      });
+      return;
+    }
     if (item.status !== "approved") {
       toast.error("Approve internally before authorizing the client");
       return;
@@ -199,7 +276,11 @@ export function ApprovalsCenter() {
                     <Badge variant="secondary">v{item.version}</Badge>
                   ) : null}
                   <Badge variant="outline">
-                    {item.kind === "work" ? "Work submission" : "Submission"}
+                    {item.kind === "work"
+                      ? "Work submission"
+                      : item.kind === "task"
+                        ? "Direct task"
+                        : "Submission"}
                   </Badge>
                   <SubmissionStatusBadge status={item.status} />
                 </div>

@@ -71,6 +71,7 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
     updateMilestone,
     updateMilestoneStatus,
     authorizeTaskForClient,
+    updateTaskStatus,
     deleteMilestone,
   } = useWorkspaceStore();
   const items = milestones.filter((m) => m.projectId === projectId);
@@ -157,6 +158,12 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
             authorizeTaskForClient(taskId);
             toast.success("Sent to client", {
               description: "Client must approve before this task shows as Done",
+            });
+          }}
+          onRequestRevision={(taskId) => {
+            updateTaskStatus(taskId, "in_progress");
+            toast.success("Revision requested", {
+              description: "Task returned to the assignee",
             });
           }}
           onStatusChange={(status) => {
@@ -294,6 +301,7 @@ function MilestoneCard({
   milestone,
   linkedTasks,
   onApproveTask,
+  onRequestRevision,
   onStatusChange,
   onEdit,
   onDelete,
@@ -301,6 +309,7 @@ function MilestoneCard({
   milestone: Milestone;
   linkedTasks: Task[];
   onApproveTask: (taskId: string) => void;
+  onRequestRevision: (taskId: string) => void;
   onStatusChange: (status: MilestoneStatus) => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -394,12 +403,21 @@ function MilestoneCard({
                     task.authorizedForClient &&
                     task.clientApprovalStatus === "pending"
                   ) ? (
-                    <Button
-                      size="xs"
-                      onClick={() => onApproveTask(task.id)}
-                    >
-                      Approve for client
-                    </Button>
+                    <div className="flex flex-wrap gap-1.5">
+                      <Button
+                        size="xs"
+                        onClick={() => onApproveTask(task.id)}
+                      >
+                        Approve for client
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="destructive"
+                        onClick={() => onRequestRevision(task.id)}
+                      >
+                        Request revision
+                      </Button>
+                    </div>
                   ) : null}
                 </div>
               </li>

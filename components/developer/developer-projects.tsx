@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 export function DeveloperProjectsPage() {
   const { user } = useRequiredAuth();
   const { projects, assignments, milestones, tasks } = useWorkspaceStore();
-  const mine = developerProjects(projects, assignments, user);
+  const mine = developerProjects(projects, assignments, user, tasks);
   const myAssignments = developerAssignments(assignments, user);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"all" | ProjectStatus>("all");
@@ -43,7 +43,7 @@ export function DeveloperProjectsPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="My Projects"
-        description="Projects linked to your assignments — timeline, milestones and tasks."
+        description="Projects from direct task assignments and marketplace work — timeline, milestones and tasks."
       />
 
       <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -85,7 +85,7 @@ export function DeveloperProjectsPage() {
             (t) =>
               t.projectId === project.id &&
               !t.parentId &&
-              t.assigneeId === user.developerId
+              t.assigneeId === user.id
           );
           const nextMilestone = projectMilestones
             .filter((m) => m.status !== "completed")
@@ -132,8 +132,8 @@ export function DeveloperProjectsPage() {
 
       {filtered.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border px-6 py-16 text-center text-sm text-muted-foreground">
-          No projects yet. Accept a marketplace opportunity tied to a project to
-          unlock timeline and milestones.
+          No projects yet. Ask an admin to assign you a project task, or accept a
+          marketplace opportunity tied to a project.
         </div>
       ) : null}
     </div>

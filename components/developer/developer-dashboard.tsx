@@ -20,12 +20,13 @@ export function DeveloperDashboard() {
     portalNotifications,
     developers,
     projects,
+    tasks,
   } = useWorkspaceStore();
 
   const developerId = user.developerId ?? "dev1";
   const profile = developers.find((d) => d.id === developerId);
   const mine = assignments.filter((a) => a.developerId === developerId);
-  const myProjects = developerProjects(projects, assignments, user);
+  const myProjects = developerProjects(projects, assignments, user, tasks);
   const mySubs = workSubmissions.filter((w) =>
     mine.some((a) => a.id === w.assignmentId)
   );

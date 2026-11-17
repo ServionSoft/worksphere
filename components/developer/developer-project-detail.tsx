@@ -49,7 +49,7 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
   } = useWorkspaceStore();
   const [tab, setTab] = useState("overview");
 
-  const allowed = developerProjects(projects, assignments, user);
+  const allowed = developerProjects(projects, assignments, user, tasks);
   const project = allowed.find((p) => p.id === projectId);
 
   const projectTasks = useMemo(
@@ -75,7 +75,7 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
       <div className="rounded-xl border border-dashed border-border px-6 py-20 text-center">
         <p className="font-semibold">Project unavailable</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          You only see projects linked to your assignments.
+          You only see projects you are authorized for via direct task or marketplace assignment.
         </p>
         <Button
           className="mt-4"
@@ -287,7 +287,7 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
           >
             <ul className="divide-y divide-border">
               {projectTasks.map((task) => {
-                const mine = task.assigneeId === user.developerId;
+                const mine = task.assigneeId === user.id;
                 return (
                   <li key={task.id} className="px-5 py-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -353,7 +353,7 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
                 (t) => t.milestoneId === m.id
               );
               const myLinked = linkedTasks.filter(
-                (t) => t.assigneeId === user.developerId
+                (t) => t.assigneeId === user.id
               );
               const awaitingAdmin = myLinked.filter(
                 (t) => t.status === "review"
