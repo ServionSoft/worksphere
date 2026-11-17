@@ -2,10 +2,16 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ProjectStatusBadge } from "@/components/shared/status-badge";
 import { PriorityBadge } from "@/components/shared/priority-badge";
 import { ProjectOverviewTab } from "@/components/projects/detail/project-overview-tab";
@@ -16,9 +22,14 @@ import { ProjectMilestones } from "@/components/projects/detail/project-mileston
 import { ProjectDocuments } from "@/components/projects/detail/project-documents";
 import { ProjectApprovals } from "@/components/projects/detail/project-approvals";
 import { ProjectActivity } from "@/components/projects/detail/project-activity";
+import {
+  DeleteProjectDialog,
+  canDeleteProjects,
+} from "@/components/projects/delete-project-dialog";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { demoId } from "@/lib/demo-clock";
 import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useRequiredAuth } from "@/lib/auth-store";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import { toast } from "sonner";
 
@@ -27,6 +38,7 @@ interface ProjectDetailPageProps {
 }
 
 export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
+  const { user } = useRequiredAuth();
   const {
     projects,
     tasks,
@@ -38,6 +50,8 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
     "overview"
   );
   const [mountedTab, setMountedTab] = useState(tab);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const allowDelete = canDeleteProjects(user.role);
 
   const project = projects.find((p) => p.id === projectId);
 
@@ -134,6 +148,25 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
             >
               Submit for approval
             </Button>
+            {allowDelete ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={<Button size="icon-sm" variant="outline" />}
+                >
+                  <MoreHorizontal className="size-4" />
+                  <span className="sr-only">Project actions</span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    <Trash2 className="size-3.5" />
+                    Delete permanently
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </div>
         </div>
         <div>
@@ -194,6 +227,13 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
           <ProjectActivity projectId={project.id} />
         </TabsContent>
       </Tabs>
+
+      <DeleteProjectDialog
+        project={project}
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        redirectOnSuccess
+      />
     </div>
   );
 }

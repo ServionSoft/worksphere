@@ -3,7 +3,16 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Archive, LayoutGrid, List, Pencil, Plus, Search } from "lucide-react";
+import {
+  Archive,
+  LayoutGrid,
+  List,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +25,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
 import { PageHeader } from "@/components/shared/page-header";
 import { ProjectStatusBadge } from "@/components/shared/status-badge";
@@ -23,7 +39,12 @@ import { PriorityBadge } from "@/components/shared/priority-badge";
 import { ProjectCard } from "@/components/projects/project-card";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 import { EditProjectDialog } from "@/components/projects/edit-project-dialog";
+import {
+  DeleteProjectDialog,
+  canDeleteProjects,
+} from "@/components/projects/delete-project-dialog";
 import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useRequiredAuth } from "@/lib/auth-store";
 import { formatShortDate } from "@/lib/format";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import type { Project, ProjectStatus } from "@/lib/types";
@@ -41,6 +62,7 @@ const statusFilters: Array<{ label: string; value: "all" | ProjectStatus }> = [
 export function ProjectsView() {
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get("q") ?? "";
+  const { user } = useRequiredAuth();
   const {
     projects,
     searchQuery: globalQuery,
@@ -48,6 +70,8 @@ export function ProjectsView() {
   } = useWorkspaceStore();
   const [createOpen, setCreateOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const allowDelete = canDeleteProjects(user.role);
   const [view, setView] = useLocalStorage<"grid" | "table">(
     "worksphere.projects.view",
     "grid"
@@ -200,23 +224,45 @@ export function ProjectsView() {
                       {formatShortDate(project.dueDate)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setEditingProject(project)}
-                        >
-                          <Pencil data-icon="inline-start" />
-                          Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleArchive(project.id, project.name)}
-                        >
-                          <Archive data-icon="inline-start" />
-                          Archive
-                        </Button>
+                      <div className="flex justify-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button size="icon-sm" variant="outline" />
+                            }
+                          >
+                            <MoreHorizontal className="size-4" />
+                            <span className="sr-only">Project actions</span>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => setEditingProject(project)}
+                            >
+                              <Pencil className="size-3.5" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleArchive(project.id, project.name)
+                              }
+                            >
+                              <Archive className="size-3.5" />
+                              Archive
+                            </DropdownMenuItem>
+                            {allowDelete ? (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => setDeletingProject(project)}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                  Delete permanently
+                                </DropdownMenuItem>
+                              </>
+                            ) : null}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -246,6 +292,13 @@ export function ProjectsView() {
         open={Boolean(editingProject)}
         onOpenChange={(open) => {
           if (!open) setEditingProject(null);
+        }}
+      />
+      <DeleteProjectDialog
+        project={deletingProject}
+        open={Boolean(deletingProject)}
+        onOpenChange={(open) => {
+          if (!open) setDeletingProject(null);
         }}
       />
     </div>

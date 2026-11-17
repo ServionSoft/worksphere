@@ -170,6 +170,7 @@ export interface WorkSubmissionVersion {
   description: string;
   repoUrl?: string;
   deployUrl?: string;
+  designUrl?: string;
   files: string[];
   screenshots: string[];
   testingNotes?: string;

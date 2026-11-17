@@ -225,6 +225,7 @@ interface WorkspaceStoreValue {
   hydrated: boolean;
   workspace: Workspace;
   workspaces: Workspace[];
+  workspaceId: string;
   setWorkspaceId: (id: string) => void;
   createWorkspace: (input: {
     name: string;
@@ -249,7 +250,10 @@ interface WorkspaceStoreValue {
   addProject: (project: Project) => void;
   updateProject: (id: string, patch: Partial<Project>) => void;
   archiveProject: (id: string) => void;
-  deleteProject: (id: string) => void;
+  deleteProject: (
+    id: string,
+    confirmName: string
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
   updateTaskStatus: (taskId: string, status: TaskStatus) => void;
   updateTask: (taskId: string, patch: Partial<Task>) => void;
   addTask: (task: Task) => void;
@@ -887,15 +891,129 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const deleteProject = useCallback((id: string) => {
-    setProjects((prev) => prev.filter((p) => p.id !== id));
-    setTasks((prev) => prev.filter((t) => t.projectId !== id));
-    setMilestones((prev) => prev.filter((m) => m.projectId !== id));
-    runApi(
-      () => deleteApiProject(workspaceIdRef.current, id),
-      "Delete project"
-    );
-  }, []);
+  const deleteProject = useCallback(
+    async (id: string, confirmName: string) => {
+      const project = projects.find((p) => p.id === id);
+      if (!project) {
+        return { ok: false as const, error: "Project not found" };
+      }
+      if (confirmName.trim() !== project.name) {
+        return {
+          ok: false as const,
+          error: "Confirmation name does not match the project name exactly.",
+        };
+      }
+
+      const blockedFinance = invoices.filter(
+        (inv) =>
+          inv.projectId === id &&
+          (inv.status === "paid" || inv.status === "partial")
+      );
+      if (blockedFinance.length) {
+        return {
+          ok: false as const,
+          error: `Cannot permanently delete project: invoice(s) ${blockedFinance
+            .map((i) => i.number)
+            .join(", ")} have payment history.`,
+        };
+      }
+
+      const linkedOppIds = new Set(
+        opportunities
+          .filter((o) => o.projectId === id)
+          .map((o) => o.id)
+      );
+      const linkedAssignmentIds = new Set(
+        assignments
+          .filter(
+            (a) =>
+              a.projectId === id ||
+              (a.opportunityId && linkedOppIds.has(a.opportunityId))
+          )
+          .map((a) => a.id)
+      );
+
+      const applyLocalCascade = () => {
+        setProjects((prev) => prev.filter((p) => p.id !== id));
+        setTasks((prev) => prev.filter((t) => t.projectId !== id));
+        setMilestones((prev) => prev.filter((m) => m.projectId !== id));
+        setDocuments((prev) => prev.filter((d) => d.projectId !== id));
+        setComments((prev) => prev.filter((c) => c.projectId !== id));
+        setSubmissions((prev) => prev.filter((s) => s.projectId !== id));
+        setActivity((prev) =>
+          prev.filter((a) => a.projectId !== id)
+        );
+        setOpportunities((prev) => prev.filter((o) => o.projectId !== id));
+        setQuotations((prev) =>
+          prev.filter((q) => !linkedOppIds.has(q.opportunityId))
+        );
+        setAssignments((prev) =>
+          prev.filter((a) => !linkedAssignmentIds.has(a.id))
+        );
+        setWorkSubmissions((prev) =>
+          prev.filter(
+            (w) =>
+              w.projectId !== id &&
+              !(w.assignmentId && linkedAssignmentIds.has(w.assignmentId))
+          )
+        );
+        setThreads((prev) =>
+          prev.filter(
+            (t) =>
+              t.projectId !== id &&
+              !(t.assignmentId && linkedAssignmentIds.has(t.assignmentId))
+          )
+        );
+        setMessages((prev) =>
+          prev.filter(
+            (m) =>
+              m.projectId !== id &&
+              !(m.assignmentId && linkedAssignmentIds.has(m.assignmentId))
+          )
+        );
+        setPortalNotifications((prev) =>
+          prev.filter(
+            (n) =>
+              !n.href ||
+              (!n.href.includes(id) && !n.href.includes(`/projects/${id}`))
+          )
+        );
+        setInvoices((prev) =>
+          prev.filter((inv) => {
+            if (inv.projectId !== id) return true;
+            // Keep paid/partial in demo for audit; drop drafts
+            return inv.status === "paid" || inv.status === "partial";
+          })
+        );
+        setEarnings((prev) =>
+          prev.filter(
+            (e) =>
+              !e.assignmentId || !linkedAssignmentIds.has(e.assignmentId)
+          )
+        );
+      };
+
+      if (apiMode) {
+        try {
+          await deleteApiProject(
+            workspaceIdRef.current,
+            id,
+            confirmName.trim()
+          );
+          applyLocalCascade();
+          return { ok: true as const };
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : "Delete project failed";
+          return { ok: false as const, error: message };
+        }
+      }
+
+      applyLocalCascade();
+      return { ok: true as const };
+    },
+    [projects, opportunities, assignments, invoices, apiMode]
+  );
 
   const syncMilestoneAfterTasks = useCallback(
     (taskList: Task[], milestoneId: string, projectId: string) => {
@@ -1967,6 +2085,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
           description: submission.description,
           repoUrl: submission.repoUrl,
           deployUrl: submission.deployUrl,
+          designUrl: submission.designUrl,
           files: submission.files,
           screenshots: submission.screenshots,
           testingNotes: submission.testingNotes,
@@ -2556,6 +2675,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       hydrated,
       workspace,
       workspaces: workspaceDirectory,
+      workspaceId,
       setWorkspaceId,
       createWorkspace,
       clients: clients.filter((c) => !c.workspaceId || c.workspaceId === workspaceId),

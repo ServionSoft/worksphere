@@ -5,12 +5,14 @@ import { ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/shared/section-card";
+import { SubmissionDeliverables } from "@/components/shared/submission-deliverables";
 import { SubmissionStatusBadge } from "@/components/shared/milestone-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { formatRelativeTime, formatShortDate } from "@/lib/format";
+import { submissionDisplayStatus } from "@/lib/submission-status";
 import type { Submission, SubmissionStatus, Task } from "@/lib/types";
 import type { WorkSubmissionVersion } from "@/lib/portal-types";
 import { useWorkspaceStore } from "@/lib/workspace-store";
@@ -280,6 +282,11 @@ export function ApprovalsCenter() {
                         ? "Direct task (legacy)"
                         : "Submission"}
                   </Badge>
+                  {item.kind === "work" ? (
+                    <Badge variant="secondary">
+                      {submissionDisplayStatus(item.work)}
+                    </Badge>
+                  ) : null}
                   <SubmissionStatusBadge status={item.status} />
                 </div>
               }
@@ -309,34 +316,14 @@ export function ApprovalsCenter() {
               </div>
 
               <p className="mt-3 text-sm">{item.description}</p>
-              {item.kind === "work" && item.work.testingNotes ? (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Testing notes: {item.work.testingNotes}
-                </p>
-              ) : null}
               {item.kind === "work" ? (
-                <div className="mt-2 flex flex-wrap gap-3 text-xs">
-                  {item.work.repoUrl ? (
-                    <a
-                      href={item.work.repoUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-primary hover:underline"
-                    >
-                      Repository
-                    </a>
-                  ) : null}
-                  {item.work.deployUrl ? (
-                    <a
-                      href={item.work.deployUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-primary hover:underline"
-                    >
-                      Deployment
-                    </a>
-                  ) : null}
-                </div>
+                <SubmissionDeliverables
+                  files={item.work.files}
+                  repoUrl={item.work.repoUrl}
+                  deployUrl={item.work.deployUrl}
+                  designUrl={item.work.designUrl}
+                  testingNotes={item.work.testingNotes}
+                />
               ) : null}
 
               {item.reviewNote ? (

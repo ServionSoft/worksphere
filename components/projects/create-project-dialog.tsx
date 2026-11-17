@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { demoId } from "@/lib/demo-clock";
+import { localDateInputValue } from "@/lib/format";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import type { Priority, ProjectStatus } from "@/lib/types";
 
@@ -45,7 +46,8 @@ export function CreateProjectDialog({
   const resolvedManagerId = managerId || team[0]?.id || "";
   const [priority, setPriority] = useState<Priority>("medium");
   const [status, setStatus] = useState<ProjectStatus>("planning");
-  const [dueDate, setDueDate] = useState("2026-06-30");
+  const [startDate, setStartDate] = useState(() => localDateInputValue());
+  const [dueDate, setDueDate] = useState("");
 
   function reset() {
     setName("");
@@ -54,13 +56,26 @@ export function CreateProjectDialog({
     setManagerId("");
     setPriority("medium");
     setStatus("planning");
-    setDueDate("2026-06-30");
+    setStartDate(localDateInputValue());
+    setDueDate("");
     setBudget("50000");
+  }
+
+  function handleOpenChange(next: boolean) {
+    if (next) {
+      // Recalculate today's local date every time the dialog opens.
+      reset();
+    }
+    onOpenChange(next);
   }
 
   function handleCreate() {
     if (!name.trim()) {
       toast.error("Project name is required");
+      return;
+    }
+    if (!startDate) {
+      toast.error("Start date is required");
       return;
     }
     const client = clients.find((c) => c.id === resolvedClientId) ?? clients[0];
@@ -82,7 +97,7 @@ export function CreateProjectDialog({
       status,
       progress: 0,
       priority,
-      startDate: "2026-03-11",
+      startDate,
       dueDate,
       teamSize: 1,
       budget: Number(budget) || 50000,
@@ -96,7 +111,7 @@ export function CreateProjectDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg" showCloseButton>
         <DialogHeader>
           <DialogTitle>Create project</DialogTitle>
@@ -243,6 +258,20 @@ export function CreateProjectDialog({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <label
+                className="text-xs font-medium text-foreground"
+                htmlFor="start-date"
+              >
+                Start date
+              </label>
+              <Input
+                id="start-date"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-foreground" htmlFor="due-date">
                 Due date

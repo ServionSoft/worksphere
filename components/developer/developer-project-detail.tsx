@@ -328,30 +328,37 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
                       </div>
                     </div>
                     {mine && task.status !== "done" ? (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {developerWorkStatuses.map((status) => (
-                          <Button
-                            key={status}
-                            size="xs"
-                            variant={
-                              task.status === status ? "secondary" : "outline"
-                            }
-                            onClick={() => {
-                              updateTaskStatus(task.id, status);
-                              toast.success("Task updated");
-                            }}
-                          >
-                            {status.replace("_", " ")}
-                          </Button>
-                        ))}
-                        {task.status !== "review" ? (
-                          <Button
-                            size="xs"
-                            onClick={() => setSubmitTask(task)}
-                          >
-                            Submit Work
-                          </Button>
-                        ) : null}
+                      <div className="mt-2 flex flex-col gap-2">
+                        <div className="flex flex-wrap gap-1.5">
+                          {developerWorkStatuses.map((status) => (
+                            <Button
+                              key={status}
+                              size="xs"
+                              variant={
+                                task.status === status ? "secondary" : "outline"
+                              }
+                              onClick={() => {
+                                updateTaskStatus(task.id, status);
+                                toast.success("Task updated");
+                              }}
+                            >
+                              {status.replace("_", " ")}
+                            </Button>
+                          ))}
+                          {task.status !== "review" ? (
+                            <Button
+                              size="xs"
+                              onClick={() => setSubmitTask(task)}
+                            >
+                              Submit Work
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-amber-800">
+                              Awaiting internal review
+                            </span>
+                          )}
+                        </div>
+                        <TaskSubmissionHistory taskId={task.id} />
                       </div>
                     ) : null}
                   </li>

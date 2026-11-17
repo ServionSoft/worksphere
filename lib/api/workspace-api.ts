@@ -208,11 +208,22 @@ export function archiveApiProject(workspaceId: string, projectId: string) {
   );
 }
 
-export function deleteApiProject(workspaceId: string, projectId: string) {
-  return apiFetch<{ ok: true }>(
-    `/api/workspaces/${workspaceId}/projects/${projectId}`,
-    { method: "DELETE", workspaceId }
-  );
+export function deleteApiProject(
+  workspaceId: string,
+  projectId: string,
+  confirmName: string
+) {
+  return apiFetch<{
+    id: string;
+    deleted: true;
+    alreadyDeleted?: boolean;
+    storage?: { deleted: number; skipped: number; errors: string[] };
+    summary?: Record<string, number>;
+  }>(`/api/workspaces/${workspaceId}/projects/${projectId}`, {
+    method: "DELETE",
+    workspaceId,
+    body: JSON.stringify({ confirmName }),
+  });
 }
 
 export function createApiTask(workspaceId: string, task: Task) {
@@ -518,6 +529,7 @@ export function createApiWorkSubmission(
     description?: string;
     repoUrl?: string;
     deployUrl?: string;
+    designUrl?: string;
     files?: string[];
     screenshots?: string[];
     testingNotes?: string;
