@@ -1,7 +1,10 @@
 import type { PortalKind, SessionUser } from "@/lib/portal-types";
 
-/** Shared demo password — not production-grade security. */
-export const DEMO_PASSWORD = "WorkSphere!2026";
+/**
+ * Fresh-reset test accounts (API mode).
+ * Passwords match backend/.local-reset-credentials.txt after reset.
+ */
+export const DEMO_PASSWORD = "Ws!shared-unused";
 
 export const DEMO_ACCOUNTS: Array<{
   email: string;
@@ -10,57 +13,44 @@ export const DEMO_ACCOUNTS: Array<{
   user: SessionUser;
 }> = [
   {
-    email: "super@worksphere.demo",
-    password: DEMO_PASSWORD,
+    email: "jawad@worksphere.demo",
+    password: "Ws!5jy24YvDcFNBbFSQ7cSwRxiD",
     portal: "admin",
     user: {
-      id: "su1",
-      name: "Sam Rivera",
-      email: "super@worksphere.demo",
-      role: "super_admin",
-      portal: "admin",
-      title: "Platform Super Admin",
-    },
-  },
-  {
-    email: "admin@worksphere.demo",
-    password: DEMO_PASSWORD,
-    portal: "admin",
-    user: {
-      id: "u1",
-      name: "Ayesha Khan",
-      email: "admin@worksphere.demo",
+      id: "admin-jawad",
+      name: "Jawad",
+      email: "jawad@worksphere.demo",
       role: "tenant_admin",
       portal: "admin",
-      title: "Workspace Admin",
+      title: "Tenant Admin",
     },
   },
   {
-    email: "client@worksphere.demo",
-    password: DEMO_PASSWORD,
-    portal: "client",
-    user: {
-      id: "cu1",
-      name: "Helen Park",
-      email: "client@worksphere.demo",
-      role: "client",
-      portal: "client",
-      clientId: "c1",
-      title: "VP Product, Nova Retail",
-    },
-  },
-  {
-    email: "developer@worksphere.demo",
-    password: DEMO_PASSWORD,
+    email: "taha@worksphere.demo",
+    password: "Ws!ubDZGL-KtYEdxgSvSjegPNjj",
     portal: "developer",
     user: {
-      id: "du1",
-      name: "Elena Vargas",
-      email: "developer@worksphere.demo",
+      id: "dev-taha",
+      name: "Taha",
+      email: "taha@worksphere.demo",
       role: "developer",
       portal: "developer",
-      developerId: "dev1",
-      title: "Senior Frontend Engineer",
+      developerId: "dev-taha",
+      title: "Developer",
+    },
+  },
+  {
+    email: "charles@worksphere.demo",
+    password: "Ws!8XRLzoU64ucBTWZ14it4FSs9",
+    portal: "client",
+    user: {
+      id: "client-charles",
+      name: "Charles",
+      email: "charles@worksphere.demo",
+      role: "client",
+      portal: "client",
+      clientId: "client-charles",
+      title: "Client",
     },
   },
 ];

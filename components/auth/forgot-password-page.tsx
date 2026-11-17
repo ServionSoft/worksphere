@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { WorkSphereLogo } from "@/components/layout/logo";
 import { useAuth } from "@/lib/auth-store";
-import { DEMO_PASSWORD } from "@/lib/demo-credentials";
 
 export function ForgotPasswordPage() {
   const { requestPasswordReset } = useAuth();
@@ -87,7 +86,7 @@ export function ForgotPasswordPage() {
           </form>
 
           <p className="mt-4 text-xs text-muted-foreground">
-            Demo password remains <code className="font-mono">{DEMO_PASSWORD}</code>.
+            Prefer using the test account buttons on the sign-in page.
           </p>
 
           <Button

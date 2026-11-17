@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { WorkSphereLogo } from "@/components/layout/logo";
 import { useAuth, portalHome } from "@/lib/auth-store";
-import { DEMO_ACCOUNTS, DEMO_PASSWORD } from "@/lib/demo-credentials";
+import { DEMO_ACCOUNTS } from "@/lib/demo-credentials";
 import type { PortalKind } from "@/lib/portal-types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -110,7 +110,7 @@ export function LoginPage() {
     if (!account) return;
     setPortal(account.portal);
     setEmail(account.email);
-    setPassword(DEMO_PASSWORD);
+    setPassword(account.password);
     setError(null);
   }
 
@@ -296,30 +296,33 @@ export function LoginPage() {
 
             <div className="mt-5 rounded-xl border border-dashed border-border bg-muted/30 p-3">
               <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                Demo mode
+                Test accounts
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Password for all accounts: <code className="font-mono">{DEMO_PASSWORD}</code>
+                Click a role to fill email and password, then sign in.
               </p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
+              <div className="mt-2 flex flex-col gap-1.5">
                 {DEMO_ACCOUNTS.map((account) => (
                   <Button
                     key={account.email}
                     type="button"
-                    size="xs"
+                    size="sm"
                     variant="outline"
+                    className="h-auto justify-start px-2.5 py-2 text-left"
                     onClick={() => fillDemo(account.portal, account.email)}
                     disabled={submitting}
                   >
-                    {account.user.role === "super_admin"
-                      ? "super admin"
-                      : account.portal}
+                    <span className="flex min-w-0 flex-col gap-0.5">
+                      <span className="text-xs font-semibold capitalize">
+                        {account.portal} · {account.user.name}
+                      </span>
+                      <span className="truncate font-mono text-[11px] font-normal text-muted-foreground">
+                        {account.email}
+                      </span>
+                    </span>
                   </Button>
                 ))}
               </div>
-              <p className="mt-2 text-[11px] text-muted-foreground">
-                Mock authentication is for UI/dev only — not production security.
-              </p>
             </div>
           </section>
         </div>
