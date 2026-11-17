@@ -51,8 +51,11 @@ export function normalizeTaskClientGate(task: Task): Task {
 }
 
 export function clientProjects(projects: Project[], user: SessionUser) {
-  const ids = user.clientId ? clientProjectAccess[user.clientId] ?? [] : [];
-  return projects.filter((p) => ids.includes(p.id));
+  if (!user.clientId) return [];
+  // Demo seed map (c1 → p1/p6). API mode uses real UUIDs — match project.clientId.
+  const mapped = clientProjectAccess[user.clientId];
+  if (mapped) return projects.filter((p) => mapped.includes(p.id));
+  return projects.filter((p) => p.clientId === user.clientId);
 }
 
 export function clientMilestones(
