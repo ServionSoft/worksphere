@@ -512,7 +512,8 @@ export function resolveApiExtension(
 export function createApiWorkSubmission(
   workspaceId: string,
   submission: {
-    assignmentId: string;
+    assignmentId?: string;
+    taskId?: string;
     title: string;
     description?: string;
     repoUrl?: string;
@@ -542,12 +543,11 @@ export function reviewApiWorkSubmission(
   reviewNote?: string,
   authorizeClient?: boolean
 ) {
+  // UI "Request revision" uses rejected/in_review — both become revision_requested
   const decision =
-    status === "rejected"
-      ? "rejected"
-      : status === "in_review"
-        ? "revision_requested"
-        : "approved";
+    status === "approved"
+      ? "approved"
+      : "revision_requested";
   return apiFetch<WorkSubmissionVersion>(
     `/api/workspaces/${workspaceId}/submissions/${submissionId}/review`,
     {

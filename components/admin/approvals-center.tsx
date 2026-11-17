@@ -115,28 +115,24 @@ export function ApprovalsCenter() {
         submission: s,
       }));
 
-    // Direct task submissions (developer set status → review)
+    // Legacy task-status-only items: only when no versioned submission exists yet
+    const submittedTaskIds = new Set(
+      workSubmissions.map((w) => w.taskId).filter(Boolean)
+    );
     const taskItems: UnifiedItem[] = tasks
       .filter(
         (t) =>
           !t.parentId &&
+          !submittedTaskIds.has(t.id) &&
           (t.status === "review" ||
             t.clientApprovalStatus === "revision_requested" ||
-            (t.authorizedForClient &&
-              t.clientApprovalStatus === "pending") ||
-            t.clientApprovalStatus === "approved")
+            (t.authorizedForClient && t.clientApprovalStatus === "pending"))
       )
       .map((t) => {
         let status: SubmissionStatus = "submitted";
-        if (t.clientApprovalStatus === "approved") status = "approved";
-        else if (
-          t.clientApprovalStatus === "revision_requested" ||
-          t.status === "in_progress"
-        )
-          status = "rejected";
+        if (t.clientApprovalStatus === "revision_requested") status = "rejected";
         else if (t.authorizedForClient && t.clientApprovalStatus === "pending")
           status = "approved";
-        else if (t.status === "review") status = "submitted";
         return {
           kind: "task" as const,
           id: t.id,
@@ -277,9 +273,11 @@ export function ApprovalsCenter() {
                   ) : null}
                   <Badge variant="outline">
                     {item.kind === "work"
-                      ? "Work submission"
-                      : item.kind === "task"
+                      ? item.work.taskId
                         ? "Direct task"
+                        : "Marketplace"
+                      : item.kind === "task"
+                        ? "Direct task (legacy)"
                         : "Submission"}
                   </Badge>
                   <SubmissionStatusBadge status={item.status} />
@@ -311,6 +309,35 @@ export function ApprovalsCenter() {
               </div>
 
               <p className="mt-3 text-sm">{item.description}</p>
+              {item.kind === "work" && item.work.testingNotes ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Testing notes: {item.work.testingNotes}
+                </p>
+              ) : null}
+              {item.kind === "work" ? (
+                <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                  {item.work.repoUrl ? (
+                    <a
+                      href={item.work.repoUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      Repository
+                    </a>
+                  ) : null}
+                  {item.work.deployUrl ? (
+                    <a
+                      href={item.work.deployUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      Deployment
+                    </a>
+                  ) : null}
+                </div>
+              ) : null}
 
               {item.reviewNote ? (
                 <p className="mt-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">

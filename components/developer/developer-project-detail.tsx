@@ -24,14 +24,17 @@ import {
   productionStage,
 } from "@/lib/portal-selectors";
 import { useWorkspaceStore } from "@/lib/workspace-store";
-import type { TaskStatus } from "@/lib/types";
+import type { Task, TaskStatus } from "@/lib/types";
+import {
+  TaskSubmissionHistory,
+  TaskSubmitWorkDialog,
+} from "@/components/developer/task-submit-work-dialog";
 import { toast } from "sonner";
 
-/** Developer works the task; admin marks done after approval. */
+/** Working statuses — final submit uses Submit Work form, not a bare review flip. */
 const developerWorkStatuses: TaskStatus[] = [
   "todo",
   "in_progress",
-  "review",
   "blocked",
 ];
 
@@ -48,6 +51,7 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
     updateTaskStatus,
   } = useWorkspaceStore();
   const [tab, setTab] = useState("overview");
+  const [submitTask, setSubmitTask] = useState<Task | null>(null);
 
   const allowed = developerProjects(projects, assignments, user, tasks);
   const project = allowed.find((p) => p.id === projectId);
@@ -66,8 +70,11 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
   const linkedAssignments = developerAssignments(assignments, user).filter(
     (a) => a.projectId === projectId
   );
-  const linkedSubs = workSubmissions.filter((w) =>
-    linkedAssignments.some((a) => a.id === w.assignmentId)
+  const linkedSubs = workSubmissions.filter(
+    (w) =>
+      linkedAssignments.some((a) => a.id === w.assignmentId) ||
+      (w.taskId && myTasks.some((t) => t.id === w.taskId)) ||
+      w.projectId === projectId
   );
 
   if (!project) {
@@ -244,31 +251,42 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
                       </div>
                       {task.status === "done" ? (
                         <p className="mt-3 text-xs text-muted-foreground">
-                          Approved by admin.
+                          Approved by admin / client.
                         </p>
                       ) : (
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          {developerWorkStatuses.map((status) => (
-                            <Button
-                              key={status}
-                              size="xs"
-                              variant={
-                                task.status === status ? "secondary" : "outline"
-                              }
-                              onClick={() => {
-                                updateTaskStatus(task.id, status);
-                                toast.success(
-                                  status === "review"
-                                    ? "Sent for admin approval"
-                                    : "Task status updated"
-                                );
-                              }}
-                            >
-                              {status === "review"
-                                ? "submit for approval"
-                                : status.replace("_", " ")}
-                            </Button>
-                          ))}
+                        <div className="mt-3 flex flex-col gap-2">
+                          <div className="flex flex-wrap gap-1.5">
+                            {developerWorkStatuses.map((status) => (
+                              <Button
+                                key={status}
+                                size="xs"
+                                variant={
+                                  task.status === status
+                                    ? "secondary"
+                                    : "outline"
+                                }
+                                onClick={() => {
+                                  updateTaskStatus(task.id, status);
+                                  toast.success("Task status updated");
+                                }}
+                              >
+                                {status.replace("_", " ")}
+                              </Button>
+                            ))}
+                            {task.status !== "review" ? (
+                              <Button
+                                size="xs"
+                                onClick={() => setSubmitTask(task)}
+                              >
+                                Submit Work
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-amber-800">
+                                Awaiting internal review
+                              </span>
+                            )}
+                          </div>
+                          <TaskSubmissionHistory taskId={task.id} />
                         </div>
                       )}
                     </li>
@@ -320,18 +338,20 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
                             }
                             onClick={() => {
                               updateTaskStatus(task.id, status);
-                              toast.success(
-                                status === "review"
-                                  ? "Sent for admin approval"
-                                  : "Task updated"
-                              );
+                              toast.success("Task updated");
                             }}
                           >
-                            {status === "review"
-                              ? "submit for approval"
-                              : status.replace("_", " ")}
+                            {status.replace("_", " ")}
                           </Button>
                         ))}
+                        {task.status !== "review" ? (
+                          <Button
+                            size="xs"
+                            onClick={() => setSubmitTask(task)}
+                          >
+                            Submit Work
+                          </Button>
+                        ) : null}
                       </div>
                     ) : null}
                   </li>
@@ -412,30 +432,35 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
                                 Approved by admin
                               </p>
                             ) : (
-                              <div className="mt-2 flex flex-wrap gap-1.5">
-                                {developerWorkStatuses.map((status) => (
-                                  <Button
-                                    key={status}
-                                    size="xs"
-                                    variant={
-                                      task.status === status
-                                        ? "secondary"
-                                        : "outline"
-                                    }
-                                    onClick={() => {
-                                      updateTaskStatus(task.id, status);
-                                      toast.success(
-                                        status === "review"
-                                          ? "Sent for admin approval"
-                                          : "Task updated"
-                                      );
-                                    }}
-                                  >
-                                    {status === "review"
-                                      ? "submit for approval"
-                                      : status.replace("_", " ")}
-                                  </Button>
-                                ))}
+                              <div className="mt-2 flex flex-col gap-2">
+                                <div className="flex flex-wrap gap-1.5">
+                                  {developerWorkStatuses.map((status) => (
+                                    <Button
+                                      key={status}
+                                      size="xs"
+                                      variant={
+                                        task.status === status
+                                          ? "secondary"
+                                          : "outline"
+                                      }
+                                      onClick={() => {
+                                        updateTaskStatus(task.id, status);
+                                        toast.success("Task updated");
+                                      }}
+                                    >
+                                      {status.replace("_", " ")}
+                                    </Button>
+                                  ))}
+                                  {task.status !== "review" ? (
+                                    <Button
+                                      size="xs"
+                                      onClick={() => setSubmitTask(task)}
+                                    >
+                                      Submit Work
+                                    </Button>
+                                  ) : null}
+                                </div>
+                                <TaskSubmissionHistory taskId={task.id} />
                               </div>
                             )}
                           </li>
@@ -551,6 +576,14 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
           </SectionCard>
         </TabsContent>
       </Tabs>
+
+      <TaskSubmitWorkDialog
+        task={submitTask}
+        open={Boolean(submitTask)}
+        onOpenChange={(open) => {
+          if (!open) setSubmitTask(null);
+        }}
+      />
     </div>
   );
 }

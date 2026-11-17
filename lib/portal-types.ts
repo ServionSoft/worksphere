@@ -162,7 +162,8 @@ export interface DeveloperAssignment {
 
 export interface WorkSubmissionVersion {
   id: string;
-  assignmentId: string;
+  assignmentId?: string;
+  taskId?: string;
   projectId?: string;
   version: number;
   title: string;

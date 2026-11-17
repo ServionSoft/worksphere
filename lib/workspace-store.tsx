@@ -1886,8 +1886,11 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       const createdId = demoId("ws");
       setWorkSubmissions((prev) => {
         const version =
-          prev.filter((s) => s.assignmentId === submission.assignmentId)
-            .length + 1;
+          prev.filter((s) =>
+            submission.taskId
+              ? s.taskId === submission.taskId
+              : s.assignmentId === submission.assignmentId
+          ).length + 1;
         return [
           {
             ...submission,
@@ -1901,17 +1904,33 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
           ...prev,
         ];
       });
-      setAssignments((prev) =>
-        prev.map((a) =>
-          a.id === submission.assignmentId
-            ? {
-                ...a,
-                status: "submitted" as AssignmentStatus,
-                progress: Math.max(a.progress, 80),
-              }
-            : a
-        )
-      );
+      if (submission.assignmentId) {
+        setAssignments((prev) =>
+          prev.map((a) =>
+            a.id === submission.assignmentId
+              ? {
+                  ...a,
+                  status: "submitted" as AssignmentStatus,
+                  progress: Math.max(a.progress, 80),
+                }
+              : a
+          )
+        );
+      }
+      if (submission.taskId) {
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === submission.taskId
+              ? {
+                  ...t,
+                  status: "review",
+                  authorizedForClient: false,
+                  clientApprovalStatus: "not_required",
+                }
+              : t
+          )
+        );
+      }
       if (submission.projectId) {
         addSubmission({
           projectId: submission.projectId,
@@ -1920,7 +1939,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
           submittedBy: submission.submittedBy,
           status: "submitted",
           documentIds: [],
-          relatedTaskId: null,
+          relatedTaskId: submission.taskId ?? null,
           workSubmissionId: createdId,
           assignmentId: submission.assignmentId,
           authorizedForClient: false,
@@ -1943,6 +1962,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       runApi(async () => {
         const remote = await createApiWorkSubmission(workspaceIdRef.current, {
           assignmentId: submission.assignmentId,
+          taskId: submission.taskId,
           title: submission.title,
           description: submission.description,
           repoUrl: submission.repoUrl,
@@ -2009,26 +2029,54 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       const work = workSubmissions.find((w) => w.id === workSubmissionId);
       if (work) {
         if (status === "rejected") {
-          setAssignments((prev) =>
-            prev.map((a) =>
-              a.id === work.assignmentId
-                ? { ...a, status: "revision_requested" as AssignmentStatus }
-                : a
-            )
-          );
+          if (work.assignmentId) {
+            setAssignments((prev) =>
+              prev.map((a) =>
+                a.id === work.assignmentId
+                  ? { ...a, status: "revision_requested" as AssignmentStatus }
+                  : a
+              )
+            );
+          }
+          if (work.taskId) {
+            setTasks((prev) =>
+              prev.map((t) =>
+                t.id === work.taskId
+                  ? {
+                      ...t,
+                      status: "in_progress",
+                      clientApprovalStatus: "revision_requested",
+                      authorizedForClient: false,
+                    }
+                  : t
+              )
+            );
+          }
         }
-        const assignment = assignments.find((a) => a.id === work.assignmentId);
+        const assignment = work.assignmentId
+          ? assignments.find((a) => a.id === work.assignmentId)
+          : undefined;
+        const href = work.assignmentId
+          ? `/developer/tasks/${work.assignmentId}`
+          : work.projectId
+            ? `/developer/projects/${work.projectId}`
+            : "/developer/my-tasks";
+        const developerUserId = assignment
+          ? resolveDeveloperUserId(assignment.developerId)
+          : (developers.find((d) => d.name === work.submittedBy)?.userId ?? "");
         notify({
           portal: "developer",
-          userId: resolveDeveloperUserId(assignment?.developerId ?? "dev1"),
+          userId: developerUserId,
           title:
             status === "rejected"
-              ? "Revision requested"
+              ? "Revision feedback"
               : authorizeClient
                 ? "Approved — sent to client"
                 : `Submission ${status}`,
-          body: work.title,
-          href: `/developer/tasks/${work.assignmentId}`,
+          body: reviewNote
+            ? `${work.title} — ${reviewNote}`
+            : work.title,
+          href,
         });
       }
       // Prefer explicit authorizeClientReview after status is approved
@@ -2051,6 +2099,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       workSubmissions,
       authorizeClientReview,
       assignments,
+      developers,
       resolveDeveloperUserId,
       notify,
     ]
