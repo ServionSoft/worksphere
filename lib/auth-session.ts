@@ -103,7 +103,8 @@ export function portalForPath(pathname: string): PortalKind | "public" {
   ) {
     return "public";
   }
-  if (pathname.startsWith("/client")) return "client";
+  // Use /client/ prefix — do NOT match admin /clients
+  if (pathname === "/client" || pathname.startsWith("/client/")) return "client";
   if (pathname.startsWith("/developer")) return "developer";
   // /super-admin and tenant admin app share the admin portal cookie
   return "admin";

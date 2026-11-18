@@ -33,7 +33,10 @@ function isPublic(pathname: string) {
 }
 
 function requiredPortal(pathname: string): PortalHint | null {
-  if (pathname.startsWith("/client")) return "client";
+  // Use /client/ prefix — do NOT match admin /clients
+  if (pathname === "/client" || pathname.startsWith("/client/")) {
+    return "client";
+  }
   if (
     pathname === "/developer/register" ||
     pathname.startsWith("/developer/register/")

@@ -23,11 +23,13 @@ function authenticate(email, password, portal) {
 }
 
 function requiredPortal(pathname) {
-  if (pathname.startsWith("/client")) return "client";
+  // Do not treat admin /clients as the client portal
+  if (pathname === "/client" || pathname.startsWith("/client/")) return "client";
   if (pathname.startsWith("/developer")) return "developer";
   if (
     pathname === "/" ||
     pathname.startsWith("/projects") ||
+    pathname.startsWith("/clients") ||
     pathname.startsWith("/settings")
   ) {
     return "admin";
