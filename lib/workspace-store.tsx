@@ -2357,26 +2357,28 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         }
 
         // Demo rule: one approved earning for the full assignment budget.
-        setEarnings((prev) => {
-          const exists = prev.some(
-            (e) =>
-              e.assignmentId === work.assignmentId && e.status !== "paid"
-          );
-          if (exists) return prev;
-          return [
-            {
-              id: demoId("ear"),
-              assignmentId: work.assignmentId,
-              assignmentTitle: assignment?.title ?? work.title,
-              developerId: assignment?.developerId ?? "dev1",
-              amount: assignment?.budget ?? 0,
-              currency: assignment?.currency ?? "USD",
-              status: "approved" as const,
-              earnedAt: "2026-03-11",
-            },
-            ...prev,
-          ];
-        });
+        if (work.assignmentId) {
+          const assignmentId = work.assignmentId;
+          setEarnings((prev) => {
+            const exists = prev.some(
+              (e) => e.assignmentId === assignmentId && e.status !== "paid"
+            );
+            if (exists) return prev;
+            return [
+              {
+                id: demoId("ear"),
+                assignmentId,
+                assignmentTitle: assignment?.title ?? work.title,
+                developerId: assignment?.developerId ?? "dev1",
+                amount: assignment?.budget ?? 0,
+                currency: assignment?.currency ?? "USD",
+                status: "approved" as const,
+                earnedAt: "2026-03-11",
+              },
+              ...prev,
+            ];
+          });
+        }
 
         if (assignment?.developerId) {
           setDevelopers((prev) =>

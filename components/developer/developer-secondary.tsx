@@ -123,7 +123,9 @@ export function DeveloperSubmissionsPage() {
   const { assignments, workSubmissions } = useWorkspaceStore();
   const mine = assignments.filter((a) => a.developerId === user.developerId);
   const ids = new Set(mine.map((a) => a.id));
-  const items = workSubmissions.filter((w) => ids.has(w.assignmentId));
+  const items = workSubmissions.filter(
+    (w) => w.assignmentId != null && ids.has(w.assignmentId)
+  );
 
   return (
     <div className="flex flex-col gap-5">
