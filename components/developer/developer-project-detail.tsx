@@ -238,11 +238,20 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
                           <p className="mt-0.5 text-xs text-muted-foreground">
                             {task.description}
                           </p>
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            {formatShortDate(task.startDate)} –{" "}
-                            {formatShortDate(task.dueDate)}
-                            {milestone ? ` · ${milestone.title}` : null}
-                          </p>
+                          {(task.startDate ||
+                            task.dueDate ||
+                            milestone) && (
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              {[
+                                task.startDate || task.dueDate
+                                  ? `${formatShortDate(task.startDate)} – ${formatShortDate(task.dueDate)}`
+                                  : null,
+                                milestone?.title,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </p>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <PriorityBadge priority={task.priority} />

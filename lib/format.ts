@@ -8,8 +8,16 @@ export function localDateInputValue(date = new Date()): string {
   return `${y}-${m}-${d}`;
 }
 
+function parseDate(value: string | null | undefined): Date | null {
+  if (value == null || String(value).trim() === "") return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString("en-US", {
+  const date = parseDate(value);
+  if (!date) return "—";
+  return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -17,14 +25,17 @@ export function formatDate(value: string): string {
 }
 
 export function formatShortDate(value: string): string {
-  return new Date(value).toLocaleDateString("en-US", {
+  const date = parseDate(value);
+  if (!date) return "—";
+  return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
   });
 }
 
 export function formatRelativeTime(value: string): string {
-  const date = new Date(value);
+  const date = parseDate(value);
+  if (!date) return "—";
   const diffMs = DEMO_NOW.getTime() - date.getTime();
   if (diffMs < 60_000) return "Just now";
   const minutes = Math.floor(diffMs / 60000);
