@@ -169,7 +169,14 @@ export function ProjectsView() {
       {view === "grid" ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((project) => (
-            <ProjectCard key={project.id} project={project} />
+            <ProjectCard
+              key={project.id}
+              project={project}
+              canDelete={allowDelete}
+              onEdit={setEditingProject}
+              onArchive={(p) => handleArchive(p.id, p.name)}
+              onDelete={setDeletingProject}
+            />
           ))}
         </div>
       ) : (
