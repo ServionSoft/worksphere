@@ -71,14 +71,23 @@ export function DeveloperDashboard() {
     },
   ];
 
+  const missing: string[] = [];
+  if (!profile?.bio?.trim()) missing.push("Introduction");
+  if (!profile?.skills?.length) missing.push("Skills");
+  if (!profile?.title?.trim()) missing.push("Title");
+  if (!profile?.portfolioUrl?.trim()) missing.push("Portfolio");
+  const profileComplete = missing.length === 0;
+  const verified = profile?.status === "verified";
+  const rejected = profile?.status === "rejected";
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title={`Welcome, ${user.name.split(" ")[0]}`}
         description={
-          profile?.status === "verified"
+          verified
             ? "Discover opportunities and deliver assigned work."
-            : "Complete verification to unlock restricted marketplace tasks."
+            : "Complete your profile and wait for admin verification to unlock restricted marketplace actions."
         }
         actions={
           <div className="flex gap-2">
@@ -100,6 +109,64 @@ export function DeveloperDashboard() {
           </div>
         }
       />
+
+      {!verified ? (
+        <SectionCard title="Getting started">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Account
+              </p>
+              <p className="mt-1 text-sm font-medium">Signed in</p>
+              <p className="text-xs text-muted-foreground">{user.email}</p>
+            </div>
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Profile
+              </p>
+              <p className="mt-1 text-sm font-medium">
+                {profileComplete ? "Complete" : "Needs attention"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {profileComplete
+                  ? "Ready for admin review."
+                  : `Missing: ${missing.join(", ")}`}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Verification
+              </p>
+              <p className="mt-1 text-sm font-medium capitalize">
+                {(profile?.status ?? "pending_verification").replace(/_/g, " ")}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {rejected
+                  ? profile?.verificationNote ||
+                    "Update your profile and wait for another review."
+                  : "Restricted marketplace actions stay locked until approved."}
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              render={<Link href="/developer/profile" />}
+              nativeButton={false}
+            >
+              Complete profile
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              render={<Link href="/developer/marketplace" />}
+              nativeButton={false}
+            >
+              Browse open listings
+            </Button>
+          </div>
+        </SectionCard>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         {kpis.map((kpi) => (

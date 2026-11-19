@@ -125,6 +125,11 @@ export function onboard(body: {
     phone?: string;
     country?: string;
     hourlyRate?: number;
+    experienceYears?: number;
+    portfolioUrl?: string;
+    githubUrl?: string;
+    linkedinUrl?: string;
+    availability?: "available" | "limited" | "unavailable";
   };
 }) {
   return apiFetch<{

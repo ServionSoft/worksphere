@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -348,47 +349,22 @@ export function TeamManagement() {
         <TabsContent value="verification" className="mt-4">
           <div className="flex flex-col gap-3">
             {pendingDevelopers.map((dev) => (
-              <SectionCard
+              <PendingDeveloperCard
                 key={dev.id}
-                title={dev.name}
-                description={`${dev.title} · ${dev.email} · ${dev.country}`}
-              >
-                <p className="text-sm text-muted-foreground">{dev.bio}</p>
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {dev.skills.map((skill) => (
-                    <Badge key={skill} variant="secondary">
-                      {skill}
-                    </Badge>
-                  ))}
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      setDeveloperStatus(dev.id, "verified");
-                      toast.success("Developer approved", {
-                        description: dev.name,
-                      });
-                    }}
-                  >
-                    <UserCheck className="size-4" />
-                    Approve
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => {
-                      setDeveloperStatus(dev.id, "rejected");
-                      toast.success("Developer rejected", {
-                        description: dev.name,
-                      });
-                    }}
-                  >
-                    <UserX className="size-4" />
-                    Reject
-                  </Button>
-                </div>
-              </SectionCard>
+                dev={dev}
+                onApprove={() => {
+                  setDeveloperStatus(dev.id, "verified");
+                  toast.success("Developer approved", {
+                    description: dev.name,
+                  });
+                }}
+                onReject={(note) => {
+                  setDeveloperStatus(dev.id, "rejected", note);
+                  toast.success("Developer rejected", {
+                    description: dev.name,
+                  });
+                }}
+              />
             ))}
             {pendingDevelopers.length === 0 ? (
               <SectionCard title="Verification queue">
@@ -537,6 +513,69 @@ export function TeamManagement() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function PendingDeveloperCard({
+  dev,
+  onApprove,
+  onReject,
+}: {
+  dev: DeveloperProfile;
+  onApprove: () => void;
+  onReject: (note: string) => void;
+}) {
+  const [note, setNote] = useState("");
+  return (
+    <SectionCard
+      title={dev.name}
+      description={`${dev.title} · ${dev.email} · ${dev.country || "—"}`}
+    >
+      <p className="text-sm text-muted-foreground">{dev.bio || "No bio yet."}</p>
+      {dev.portfolioUrl ? (
+        <p className="mt-2 text-xs">
+          Portfolio:{" "}
+          <a
+            href={dev.portfolioUrl}
+            className="text-primary underline-offset-2 hover:underline"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {dev.portfolioUrl}
+          </a>
+        </p>
+      ) : null}
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {dev.skills.map((skill) => (
+          <Badge key={skill} variant="secondary">
+            {skill}
+          </Badge>
+        ))}
+      </div>
+      <div className="mt-3 flex flex-col gap-1.5">
+        <label className="text-xs font-medium">Rejection feedback (optional)</label>
+        <Textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={2}
+          placeholder="Share what to improve before resubmitting…"
+        />
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button size="sm" onClick={onApprove}>
+          <UserCheck className="size-4" />
+          Approve
+        </Button>
+        <Button
+          size="sm"
+          variant="destructive"
+          onClick={() => onReject(note.trim())}
+        >
+          <UserX className="size-4" />
+          Reject
+        </Button>
+      </div>
+    </SectionCard>
   );
 }
 

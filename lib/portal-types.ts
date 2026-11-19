@@ -80,6 +80,8 @@ export interface DeveloperProfile {
   linkedinUrl?: string;
   bio: string;
   status: DeveloperStatus;
+  verificationNote?: string;
+  verifiedAt?: string;
   rating: number;
   completedAssignments: number;
   onTimePercent: number;

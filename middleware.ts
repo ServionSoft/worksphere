@@ -25,6 +25,7 @@ function isPublic(pathname: string) {
   return (
     pathname.startsWith("/login") ||
     pathname.startsWith("/access-denied") ||
+    pathname.startsWith("/auth/") ||
     pathname === "/developer/register" ||
     pathname.startsWith("/developer/register/") ||
     pathname.startsWith("/_next") ||
@@ -55,6 +56,7 @@ function requiredPortal(pathname: string): PortalHint | null {
     pathname.startsWith("/approvals") ||
     pathname.startsWith("/team") ||
     pathname.startsWith("/clients") ||
+    pathname.startsWith("/messages") ||
     pathname.startsWith("/marketplace") ||
     pathname.startsWith("/finance") ||
     pathname.startsWith("/ai") ||

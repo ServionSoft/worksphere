@@ -266,6 +266,9 @@ export function DeveloperProfilePage() {
     return (
       <div className="rounded-xl border border-dashed border-border px-6 py-16 text-center">
         <p className="font-semibold">No developer profile</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Finish account setup from registration, or contact support if this persists after sign-in.
+        </p>
         <Button className="mt-4" render={<Link href="/developer/register" />} nativeButton={false}>
           Start registration
         </Button>
@@ -277,8 +280,29 @@ export function DeveloperProfilePage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="My Profile"
-        description={`Status: ${profile.status.replace("_", " ")}`}
+        description={`Status: ${profile.status.replace(/_/g, " ")}`}
       />
+      {profile.status === "rejected" ? (
+        <SectionCard title="Verification feedback">
+          <p className="text-sm text-muted-foreground">
+            {profile.verificationNote ||
+              "Your application was rejected. Update your profile and request another review."}
+          </p>
+          <Button
+            className="mt-3"
+            size="sm"
+            onClick={() => {
+              updateDeveloperProfile(profile.id, {
+                ...form,
+                requestReview: true,
+              });
+              toast.success("Re-review requested");
+            }}
+          >
+            Request re-review
+          </Button>
+        </SectionCard>
+      ) : null}
       <div className="grid gap-4 xl:grid-cols-3">
         <SectionCard title="Performance" className="xl:col-span-1">
           <p className="text-sm">Rating: <strong>{profile.rating}</strong></p>
@@ -345,165 +369,6 @@ export function DeveloperProfilePage() {
           </Button>
         </SectionCard>
       </div>
-    </div>
-  );
-}
-
-export function DeveloperRegisterPage() {
-  const router = useRouter();
-  const { registerDeveloper } = useWorkspaceStore();
-  const [step, setStep] = useState(1);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [title, setTitle] = useState("");
-  const [phone, setPhone] = useState("");
-  const [country, setCountry] = useState("");
-  const [portfolioUrl, setPortfolioUrl] = useState("");
-  const [githubUrl, setGithubUrl] = useState("");
-  const [cvMeta, setCvMeta] = useState<CvMeta | null>(null);
-  const [skills, setSkills] = useState("React, TypeScript");
-  const [bio, setBio] = useState("");
-
-  function validateStep(current: number): boolean {
-    if (current === 1) {
-      if (!name.trim() || !email.trim()) {
-        toast.error("Name and email are required");
-        return false;
-      }
-    }
-    if (current === 2) {
-      if (!title.trim() || !phone.trim() || !country.trim()) {
-        toast.error("Title, phone, and country are required");
-        return false;
-      }
-    }
-    return true;
-  }
-
-  function handleSubmit() {
-    if (!name.trim() || !email.trim()) {
-      toast.error("Name and email are required");
-      setStep(1);
-      return;
-    }
-    if (!title.trim() || !phone.trim() || !country.trim()) {
-      toast.error("Title, phone, and country are required");
-      setStep(2);
-      return;
-    }
-    if (!skills.trim()) {
-      toast.error("Add at least one skill");
-      setStep(3);
-      return;
-    }
-    if (!bio.trim()) {
-      toast.error("Bio is required");
-      setStep(5);
-      return;
-    }
-
-    registerDeveloper({
-      id: demoId("dev"),
-      userId: demoId("du"),
-      name: name.trim(),
-      email: email.trim(),
-      phone: phone.trim(),
-      country: country.trim(),
-      title: title.trim(),
-      skills: skills
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      experienceYears: 1,
-      hourlyRate: 50,
-      availability: "available",
-      portfolioUrl: portfolioUrl.trim() || undefined,
-      githubUrl: githubUrl.trim() || undefined,
-      cvMeta,
-      bio: bio.trim(),
-      status: "pending_verification",
-      rating: 0,
-      completedAssignments: 0,
-      onTimePercent: 0,
-      totalEarnings: 0,
-    });
-    toast.success("Verification request submitted", {
-      description:
-        "Sign in after an administrator verifies your profile to access the marketplace.",
-    });
-    router.push("/login?portal=developer");
-  }
-
-  return (
-    <div className="flex flex-col gap-5">
-      <PageHeader
-        title="Developer registration"
-        description={`Step ${step} of 6 — demo onboarding flow.`}
-      />
-      <SectionCard title="Onboarding">
-        {step === 1 ? (
-          <div className="grid max-w-lg gap-3">
-            <Field label="Full name" value={name} onChange={setName} />
-            <Field label="Email" value={email} onChange={setEmail} />
-          </div>
-        ) : null}
-        {step === 2 ? (
-          <div className="grid max-w-lg gap-3">
-            <Field label="Professional title" value={title} onChange={setTitle} />
-            <Field label="Phone" value={phone} onChange={setPhone} />
-            <Field label="Country" value={country} onChange={setCountry} />
-          </div>
-        ) : null}
-        {step === 3 ? (
-          <Field label="Skills (comma separated)" value={skills} onChange={setSkills} />
-        ) : null}
-        {step === 4 ? (
-          <div className="grid max-w-lg gap-3">
-            <Field
-              label="Portfolio URL"
-              value={portfolioUrl}
-              onChange={setPortfolioUrl}
-            />
-            <Field label="GitHub URL" value={githubUrl} onChange={setGithubUrl} />
-            <CvMetaField value={cvMeta} onChange={setCvMeta} />
-          </div>
-        ) : null}
-        {step === 5 ? (
-          <Textarea
-            value={bio}
-            onChange={(e) => setBio(e.target.value)}
-            placeholder="Short professional introduction"
-          />
-        ) : null}
-        {step === 6 ? (
-          <p className="text-sm text-muted-foreground">
-            Submit verification request. An administrator must approve before restricted
-            marketplace access is granted. You will then sign in via the developer portal.
-          </p>
-        ) : null}
-
-        <div className="mt-4 flex gap-2">
-          <Button
-            variant="outline"
-            disabled={step === 1}
-            onClick={() => setStep((s) => Math.max(1, s - 1))}
-          >
-            Back
-          </Button>
-          {step < 6 ? (
-            <Button
-              onClick={() => {
-                if (!validateStep(step)) return;
-                setStep((s) => s + 1);
-              }}
-            >
-              Continue
-            </Button>
-          ) : (
-            <Button onClick={handleSubmit}>Submit for verification</Button>
-          )}
-        </div>
-      </SectionCard>
     </div>
   );
 }

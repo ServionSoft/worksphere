@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -61,10 +61,22 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
 
   const reason = searchParams.get("reason");
+  const verified = searchParams.get("verified") === "1";
   const selected = useMemo(
     () => portals.find((p) => p.id === portal) ?? null,
     [portal]
   );
+
+  useEffect(() => {
+    const portalParam = searchParams.get("portal");
+    if (
+      portalParam === "admin" ||
+      portalParam === "client" ||
+      portalParam === "developer"
+    ) {
+      setPortal(portalParam);
+    }
+  }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -128,6 +140,17 @@ export function LoginPage() {
             One Workspace. Complete Control. Choose your portal, then authenticate
             with your credentials.
           </p>
+          {verified ? (
+            <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+              Email verified. Sign in with your developer credentials to open the
+              portal.
+            </p>
+          ) : null}
+          {reason === "expired" ? (
+            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Your session expired. Please sign in again.
+            </p>
+          ) : null}
         </div>
 
         <div className="mx-auto grid w-full max-w-5xl gap-6 lg:grid-cols-[1.1fr_0.9fr]">

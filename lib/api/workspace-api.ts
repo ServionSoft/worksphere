@@ -916,7 +916,7 @@ export function registerApiDeveloper(profile: DeveloperProfile) {
 
 export function patchApiDeveloper(
   developerId: string,
-  patch: Partial<DeveloperProfile>
+  patch: Partial<DeveloperProfile> & { requestReview?: boolean }
 ) {
   return apiFetch<DeveloperProfile>(`/api/developers/${developerId}`, {
     method: "PATCH",
@@ -927,14 +927,15 @@ export function patchApiDeveloper(
 export function setApiDeveloperStatus(
   workspaceId: string,
   developerId: string,
-  status: DeveloperStatus
+  status: DeveloperStatus,
+  note?: string
 ) {
   return apiFetch<DeveloperProfile>(
     `/api/workspaces/${workspaceId}/developers/${developerId}/status`,
     {
       method: "PATCH",
       workspaceId,
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, note }),
     }
   );
 }

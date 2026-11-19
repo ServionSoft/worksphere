@@ -41,8 +41,8 @@ export function ForgotPasswordPage() {
             Reset password
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Demo mode only — no email is sent. Future releases will use a real
-            identity provider.
+            Enter your account email. If it exists, we will send a secure reset
+            link via Supabase Auth.
           </p>
         </div>
 

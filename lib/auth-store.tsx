@@ -11,7 +11,9 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import {
+  bootstrapProfile,
   fetchMe,
+  onboard,
   sessionUserFromMe,
   type AuthMeResponse,
 } from "@/lib/api/auth";
@@ -30,6 +32,10 @@ import {
   writeSessionToStorage,
   type AuthSession,
 } from "@/lib/auth-session";
+import {
+  clearDeveloperRegistrationDraft,
+  readDeveloperRegistrationDraft,
+} from "@/lib/developer-registration";
 import {
   getSupabaseBrowserClient,
   isSupabaseConfigured,
@@ -251,16 +257,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data: signInData, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
       if (error) {
-        return { ok: false, error: error.message || "Invalid email or password." };
+        const msg = error.message || "Invalid email or password.";
+        if (/confirm|verified|verification/i.test(msg)) {
+          return {
+            ok: false,
+            error:
+              "Email not verified yet. Open the link we sent, or resend it from the registration page.",
+          };
+        }
+        return { ok: false, error: msg };
       }
 
       try {
-        const meData = await fetchMe();
+        let meData: AuthMeResponse;
+        try {
+          meData = await fetchMe();
+        } catch {
+          // Profile may not exist yet right after first verified login.
+          await bootstrapProfile({
+            fullName:
+              readDeveloperRegistrationDraft()?.fullName ||
+              (typeof signInData.user?.user_metadata?.full_name === "string"
+                ? signInData.user.user_metadata.full_name
+                : undefined),
+          });
+          meData = await fetchMe();
+        }
+
+        if (portal === "developer" && !meData.profile.developerProfileId) {
+          const draft = readDeveloperRegistrationDraft();
+          const meta = signInData.user?.user_metadata as
+            | Record<string, unknown>
+            | undefined;
+          await onboard({
+            kind: "developer",
+            developer: {
+              title:
+                draft?.title ||
+                (typeof meta?.title === "string" ? meta.title : undefined),
+              phone:
+                draft?.phone ||
+                (typeof meta?.phone === "string" ? meta.phone : undefined),
+              skills: draft?.skills,
+              bio: draft?.bio,
+              experienceYears: draft?.experienceYears,
+              portfolioUrl: draft?.portfolioUrl || "",
+              githubUrl: draft?.githubUrl || "",
+            },
+          });
+          clearDeveloperRegistrationDraft();
+          meData = await fetchMe();
+        }
         setMe(meData);
         const user = sessionUserFromMe(meData, portal);
         if (!user) {
@@ -329,7 +381,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!supabase) {
         return { ok: false, message: "Supabase is not configured." };
       }
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+      const redirectTo =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+              "/login/reset-password"
+            )}`
+          : undefined;
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo,
+      });
       if (error) return { ok: false, message: error.message };
       return {
         ok: true,

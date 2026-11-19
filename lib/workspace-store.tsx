@@ -380,9 +380,16 @@ interface WorkspaceStoreValue {
   markThreadRead: (threadId: string) => void;
   refreshThreads: () => Promise<void>;
   loadThreadMessages: (threadId: string) => Promise<void>;
-  updateDeveloperProfile: (id: string, patch: Partial<DeveloperProfile>) => void;
+  updateDeveloperProfile: (
+    id: string,
+    patch: Partial<DeveloperProfile> & { requestReview?: boolean }
+  ) => void;
   registerDeveloper: (profile: DeveloperProfile) => void;
-  setDeveloperStatus: (id: string, status: DeveloperStatus) => void;
+  setDeveloperStatus: (
+    id: string,
+    status: DeveloperStatus,
+    note?: string
+  ) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: (portal: PortalNotification["portal"], userId: string) => void;
   addInvoice: (invoice: Invoice) => void;
@@ -2716,11 +2723,36 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateDeveloperProfile = useCallback(
-    (id: string, patch: Partial<DeveloperProfile>) => {
+    (
+      id: string,
+      patch: Partial<DeveloperProfile> & { requestReview?: boolean }
+    ) => {
+      const { requestReview, ...profilePatch } = patch;
       setDevelopers((prev) =>
-        prev.map((d) => (d.id === id ? { ...d, ...patch } : d))
+        prev.map((d) =>
+          d.id === id
+            ? {
+                ...d,
+                ...profilePatch,
+                ...(requestReview ||
+                profilePatch.status === "pending_verification"
+                  ? {
+                      status: "pending_verification" as const,
+                      verificationNote: undefined,
+                    }
+                  : {}),
+              }
+            : d
+        )
       );
-      runApi(() => patchApiDeveloper(id, patch), "Update developer");
+      runApi(
+        () =>
+          patchApiDeveloper(id, {
+            ...profilePatch,
+            ...(requestReview ? { requestReview: true } : {}),
+          }),
+        "Update developer"
+      );
     },
     []
   );
@@ -2746,10 +2778,18 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const setDeveloperStatus = useCallback(
-    (id: string, status: DeveloperStatus) => {
+    (id: string, status: DeveloperStatus, note?: string) => {
       const profile = developers.find((d) => d.id === id);
       setDevelopers((prev) =>
-        prev.map((d) => (d.id === id ? { ...d, status } : d))
+        prev.map((d) =>
+          d.id === id
+            ? {
+                ...d,
+                status,
+                verificationNote: note ?? d.verificationNote,
+              }
+            : d
+        )
       );
       notify({
         portal: "developer",
@@ -2758,11 +2798,16 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
           status === "verified"
             ? "Verification approved"
             : `Developer status: ${status}`,
-        body: "Your developer profile was updated.",
+        body:
+          note?.trim() ||
+          (status === "verified"
+            ? "Your developer profile was verified."
+            : "Your developer profile was updated."),
         href: "/developer/profile",
       });
       runApi(
-        () => setApiDeveloperStatus(workspaceIdRef.current, id, status),
+        () =>
+          setApiDeveloperStatus(workspaceIdRef.current, id, status, note),
         "Update developer status"
       );
     },
