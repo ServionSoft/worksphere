@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { MessagingInbox } from "@/components/messaging/messaging-inbox";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/shared/section-card";
 import { useLocalStorage } from "@/hooks/use-local-storage";
@@ -17,91 +18,7 @@ import { toast } from "sonner";
 export { ClientDocumentsPanel as ClientDocumentsPage } from "@/components/client/client-documents-panel";
 
 export function ClientMessagesPage() {
-  const { user } = useRequiredAuth();
-  const { threads, messages, sendMessage, projects } = useWorkspaceStore();
-  const ids = clientProjects(projects, user).map((p) => p.id);
-  const clientThreads = threads.filter(
-    (t) => t.visibility === "client" && (!t.projectId || ids.includes(t.projectId))
-  );
-  const [activeId, setActiveId] = useState(clientThreads[0]?.id ?? "");
-  const [body, setBody] = useState("");
-  const active = clientThreads.find((t) => t.id === activeId);
-  const threadMessages = messages
-    .filter((m) => m.threadId === activeId && m.visibility === "client")
-    .slice()
-    .reverse();
-
-  return (
-    <div className="flex flex-col gap-5">
-      <PageHeader
-        title="Messages"
-        description="Client-visible project conversations. Internal admin chats stay private."
-      />
-      <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-        <SectionCard title="Conversations" bodyClassName="p-0">
-          <ul className="divide-y divide-border">
-            {clientThreads.map((thread) => (
-              <li key={thread.id}>
-                <button
-                  type="button"
-                  className={`w-full px-4 py-3 text-left hover:bg-muted/50 ${
-                    activeId === thread.id ? "bg-muted/60" : ""
-                  }`}
-                  onClick={() => setActiveId(thread.id)}
-                >
-                  <p className="text-sm font-medium">{thread.subject}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {thread.projectName}
-                  </p>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
-        <SectionCard title={active?.subject ?? "Select a conversation"}>
-          <div className="flex min-h-72 flex-col gap-3">
-            {threadMessages.map((m) => (
-              <div key={m.id} className="rounded-lg border border-border px-3 py-2">
-                <p className="text-xs font-medium">
-                  {m.authorName}{" "}
-                  <span className="font-normal text-muted-foreground">
-                    · {formatShortDate(m.createdAt)}
-                  </span>
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">{m.body}</p>
-              </div>
-            ))}
-            <Textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Write a message..."
-            />
-            <div className="flex justify-end">
-              <Button
-                size="sm"
-                disabled={!active || !body.trim()}
-                onClick={() => {
-                  if (!active) return;
-                  sendMessage({
-                    threadId: active.id,
-                    projectId: active.projectId,
-                    authorId: user.id,
-                    authorName: user.name,
-                    body: body.trim(),
-                    visibility: "client",
-                  });
-                  setBody("");
-                  toast.success("Message sent");
-                }}
-              >
-                Send
-              </Button>
-            </div>
-          </div>
-        </SectionCard>
-      </div>
-    </div>
-  );
+  return <MessagingInbox portal="client" />;
 }
 
 export function ClientBillingPage() {

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { MessagingInbox } from "@/components/messaging/messaging-inbox";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/shared/section-card";
 import { useLocalStorage } from "@/hooks/use-local-storage";
@@ -508,73 +509,7 @@ export function DeveloperRegisterPage() {
 }
 
 export function DeveloperMessagesPage() {
-  const { user } = useRequiredAuth();
-  const { threads, messages, sendMessage } = useWorkspaceStore();
-  const mine = threads.filter(
-    (t) => t.visibility === "developer" || t.visibility === "internal"
-  );
-  const [activeId, setActiveId] = useState(mine[0]?.id ?? "");
-  const [body, setBody] = useState("");
-  const threadMessages = messages
-    .filter((m) => m.threadId === activeId)
-    .slice()
-    .reverse();
-
-  return (
-    <div className="flex flex-col gap-5">
-      <PageHeader title="Messages" description="Assignment and PM conversations." />
-      <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-        <SectionCard title="Threads" bodyClassName="p-0">
-          <ul className="divide-y divide-border">
-            {mine.map((t) => (
-              <li key={t.id}>
-                <button
-                  type="button"
-                  className={`w-full px-4 py-3 text-left hover:bg-muted/50 ${
-                    activeId === t.id ? "bg-muted/60" : ""
-                  }`}
-                  onClick={() => setActiveId(t.id)}
-                >
-                  <p className="text-sm font-medium">{t.subject}</p>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
-        <SectionCard title="Conversation">
-          <div className="flex min-h-72 flex-col gap-3">
-            {threadMessages.map((m) => (
-              <div key={m.id} className="rounded-lg border border-border px-3 py-2">
-                <p className="text-xs font-medium">
-                  {m.authorName} · {formatShortDate(m.createdAt)}
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">{m.body}</p>
-              </div>
-            ))}
-            <Textarea value={body} onChange={(e) => setBody(e.target.value)} />
-            <Button
-              size="sm"
-              className="w-fit"
-              onClick={() => {
-                if (!activeId || !body.trim()) return;
-                const active = mine.find((t) => t.id === activeId);
-                sendMessage({
-                  threadId: activeId,
-                  authorId: user.id,
-                  authorName: user.name,
-                  body: body.trim(),
-                  visibility: active?.visibility ?? "developer",
-                });
-                setBody("");
-              }}
-            >
-              Send
-            </Button>
-          </div>
-        </SectionCard>
-      </div>
-    </div>
-  );
+  return <MessagingInbox portal="developer" />;
 }
 
 export function DeveloperNotificationsPage() {

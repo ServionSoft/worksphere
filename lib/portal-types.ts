@@ -211,9 +211,21 @@ export interface MessageThread {
   projectName?: string;
   assignmentId?: string;
   participants: string[];
+  participantNames?: string[];
   visibility: MessageVisibility;
   lastMessageAt: string;
+  lastMessagePreview?: string;
+  lastMessageAuthorName?: string;
   unreadCount: number;
+}
+
+export interface MessagingRecipient {
+  id: string;
+  name: string;
+  email: string;
+  kind: "admin" | "developer" | "client";
+  role?: string;
+  projectIds: string[];
 }
 
 export interface Invoice {

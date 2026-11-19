@@ -16,7 +16,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { listApiMessagingRecipients } from "@/lib/api/workspace-api";
 import { useRequiredAuth } from "@/lib/auth-store";
+import { isApiDataSource } from "@/lib/data-source";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import { toast } from "sonner";
@@ -24,14 +26,15 @@ import { toast } from "sonner";
 export function OpportunityDetailPage({ opportunityId }: { opportunityId: string }) {
   const { user } = useRequiredAuth();
   const {
+    workspaceId,
     opportunities,
     assignments,
     acceptFixedOpportunity,
     submitQuotation,
     saveOpportunity,
     developers,
+    team,
     createThread,
-    sendMessage,
   } = useWorkspaceStore();
   const opp = opportunities.find((o) => o.id === opportunityId);
   const profile = developers.find((d) => d.id === user.developerId);
@@ -200,34 +203,53 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
               className="mt-2"
               size="sm"
               onClick={() => {
-                const body = question.trim();
-                if (!body) return;
-                const threadId = createThread({
-                  subject: `Question: ${opp.title}`,
-                  projectId: opp.projectId,
-                  projectName: opp.projectName,
-                  participants: [user.name, "Admin"],
-                  visibility: "internal",
-                });
-                sendMessage({
-                  threadId,
-                  projectId: opp.projectId,
-                  authorId: user.id,
-                  authorName: user.name,
-                  body,
-                  visibility: "internal",
-                });
-                setQuestion("");
-                toast.success("Question sent to admin", {
-                  description: (
-                    <Link
-                      href="/developer/messages"
-                      className="underline underline-offset-2"
-                    >
-                      Open Messages
-                    </Link>
-                  ),
-                });
+                void (async () => {
+                  const body = question.trim();
+                  if (!body) return;
+                  try {
+                    let recipientProfileId =
+                      team.find(
+                        (m) =>
+                          m.permissionRole === "tenant_admin" ||
+                          m.permissionRole === "project_manager"
+                      )?.id ?? team[0]?.id;
+                    if (isApiDataSource() && workspaceId) {
+                      const recipients =
+                        await listApiMessagingRecipients(workspaceId);
+                      recipientProfileId =
+                        recipients.find((r) => r.kind === "admin")?.id ??
+                        recipientProfileId;
+                    }
+                    if (!recipientProfileId) {
+                      toast.error("No admin recipient available");
+                      return;
+                    }
+                    await createThread({
+                      subject: `Question: ${opp.title}`,
+                      projectId: opp.projectId,
+                      visibility: "developer",
+                      recipientProfileId,
+                      body,
+                    });
+                    setQuestion("");
+                    toast.success("Question sent to admin", {
+                      description: (
+                        <Link
+                          href="/developer/messages"
+                          className="underline underline-offset-2"
+                        >
+                          Open Messages
+                        </Link>
+                      ),
+                    });
+                  } catch (err) {
+                    toast.error(
+                      err instanceof Error
+                        ? err.message
+                        : "Could not send question"
+                    );
+                  }
+                })();
               }}
             >
               Send question

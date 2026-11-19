@@ -24,6 +24,7 @@ import type {
   Invoice,
   MarketplaceOpportunity,
   MessageThread,
+  MessagingRecipient,
   OpportunityStatus,
   PortalMessage,
   PortalNotification,
@@ -720,13 +721,49 @@ export function clientReviewApiWork(
 
 export function createApiThread(
   workspaceId: string,
-  thread: Omit<MessageThread, "id" | "lastMessageAt" | "unreadCount">
+  input: {
+    subject?: string;
+    visibility?: MessageThread["visibility"];
+    projectId?: string | null;
+    assignmentId?: string | null;
+    recipientProfileId: string;
+    participantProfileIds?: string[];
+    body: string;
+  }
 ) {
   return apiFetch<MessageThread>(`/api/workspaces/${workspaceId}/threads`, {
     method: "POST",
     workspaceId,
-    body: JSON.stringify(thread),
+    body: JSON.stringify(input),
   });
+}
+
+export function listApiThreads(workspaceId: string) {
+  return apiFetch<MessageThread[]>(`/api/workspaces/${workspaceId}/threads`, {
+    workspaceId,
+  });
+}
+
+export function listApiMessagingRecipients(workspaceId: string) {
+  return apiFetch<MessagingRecipient[]>(
+    `/api/workspaces/${workspaceId}/messaging/recipients`,
+    { workspaceId }
+  );
+}
+
+export function listApiThreadMessages(
+  workspaceId: string,
+  threadId: string,
+  opts?: { limit?: number; before?: string }
+) {
+  const params = new URLSearchParams();
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  if (opts?.before) params.set("before", opts.before);
+  const q = params.toString();
+  return apiFetch<PortalMessage[]>(
+    `/api/workspaces/${workspaceId}/threads/${threadId}/messages${q ? `?${q}` : ""}`,
+    { workspaceId }
+  );
 }
 
 export function sendApiMessage(
@@ -738,7 +775,21 @@ export function sendApiMessage(
     {
       method: "POST",
       workspaceId,
-      body: JSON.stringify(message),
+      body: JSON.stringify({
+        body: message.body,
+        visibility: message.visibility,
+        attachmentName: message.attachmentName,
+      }),
+    }
+  );
+}
+
+export function markApiThreadRead(workspaceId: string, threadId: string) {
+  return apiFetch<MessageThread>(
+    `/api/workspaces/${workspaceId}/threads/${threadId}/read`,
+    {
+      method: "POST",
+      workspaceId,
     }
   );
 }

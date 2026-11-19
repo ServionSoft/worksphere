@@ -37,10 +37,13 @@ import {
   deleteApiOpportunity,
   deleteApiProject,
   deleteApiTask,
+  listApiThreadMessages,
+  listApiThreads,
   listApiWorkspaces,
   loadWorkspaceBootstrap,
   markApiEarningPaid,
   markApiNotificationRead,
+  markApiThreadRead,
   patchApiAssignment,
   patchApiClient,
   patchApiDeveloper,
@@ -366,9 +369,17 @@ interface WorkspaceStoreValue {
   sendMessage: (
     message: Omit<PortalMessage, "id" | "createdAt" | "read">
   ) => void;
-  createThread: (
-    thread: Omit<MessageThread, "id" | "lastMessageAt" | "unreadCount">
-  ) => string;
+  createThread: (input: {
+    subject?: string;
+    visibility?: MessageThread["visibility"];
+    projectId?: string | null;
+    assignmentId?: string | null;
+    recipientProfileId: string;
+    body: string;
+  }) => Promise<string>;
+  markThreadRead: (threadId: string) => void;
+  refreshThreads: () => Promise<void>;
+  loadThreadMessages: (threadId: string) => Promise<void>;
   updateDeveloperProfile: (id: string, patch: Partial<DeveloperProfile>) => void;
   registerDeveloper: (profile: DeveloperProfile) => void;
   setDeveloperStatus: (id: string, status: DeveloperStatus) => void;
@@ -2554,11 +2565,12 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   const sendMessage = useCallback(
     (message: Omit<PortalMessage, "id" | "createdAt" | "read">) => {
       const localId = demoId("msg");
+      const createdAt = new Date().toISOString();
       setMessages((prev) => [
         {
           ...message,
           id: localId,
-          createdAt: DEMO_TS,
+          createdAt,
           read: true,
         },
         ...prev,
@@ -2566,7 +2578,13 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       setThreads((prev) =>
         prev.map((t) =>
           t.id === message.threadId
-            ? { ...t, lastMessageAt: DEMO_TS, unreadCount: 0 }
+            ? {
+                ...t,
+                lastMessageAt: createdAt,
+                lastMessagePreview: message.body,
+                lastMessageAuthorName: message.authorName,
+                unreadCount: 0,
+              }
             : t
         )
       );
@@ -2575,31 +2593,127 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         setMessages((prev) =>
           prev.map((m) => (m.id === localId ? remote : m))
         );
+        setThreads((prev) =>
+          prev.map((t) =>
+            t.id === message.threadId
+              ? {
+                  ...t,
+                  lastMessageAt: remote.createdAt,
+                  lastMessagePreview: remote.body,
+                  lastMessageAuthorName: remote.authorName,
+                  unreadCount: 0,
+                }
+              : t
+          )
+        );
       }, "Send message");
     },
     []
   );
 
   const createThread = useCallback(
-    (thread: Omit<MessageThread, "id" | "lastMessageAt" | "unreadCount">) => {
+    async (input: {
+      subject?: string;
+      visibility?: MessageThread["visibility"];
+      projectId?: string | null;
+      assignmentId?: string | null;
+      recipientProfileId: string;
+      body: string;
+    }) => {
+      if (isApiDataSource()) {
+        const remote = await createApiThread(workspaceIdRef.current, input);
+        setThreads((prev) => {
+          const without = prev.filter((t) => t.id !== remote.id);
+          return [remote, ...without];
+        });
+        try {
+          const msgs = await listApiThreadMessages(
+            workspaceIdRef.current,
+            remote.id
+          );
+          setMessages((prev) => {
+            const others = prev.filter((m) => m.threadId !== remote.id);
+            return [...msgs, ...others];
+          });
+        } catch {
+          /* thread list still usable */
+        }
+        return remote.id;
+      }
+
       const id = demoId("th");
+      const createdAt = new Date().toISOString();
       setThreads((prev) => [
         {
-          ...thread,
           id,
-          lastMessageAt: DEMO_TS,
+          subject: input.subject?.trim() || "New conversation",
+          projectId: input.projectId ?? undefined,
+          assignmentId: input.assignmentId ?? undefined,
+          participants: [input.recipientProfileId],
+          visibility: input.visibility ?? "internal",
+          lastMessageAt: createdAt,
+          lastMessagePreview: input.body,
           unreadCount: 0,
         },
         ...prev,
       ]);
-      runApi(async () => {
-        const remote = await createApiThread(workspaceIdRef.current, thread);
-        setThreads((prev) => prev.map((t) => (t.id === id ? remote : t)));
-      }, "Create thread");
+      setMessages((prev) => [
+        {
+          id: demoId("msg"),
+          threadId: id,
+          projectId: input.projectId ?? undefined,
+          assignmentId: input.assignmentId ?? undefined,
+          authorId: currentUser.id,
+          authorName: currentUser.name,
+          body: input.body,
+          createdAt,
+          visibility: input.visibility ?? "internal",
+          read: true,
+        },
+        ...prev,
+      ]);
       return id;
     },
     []
   );
+
+  const markThreadRead = useCallback((threadId: string) => {
+    setThreads((prev) =>
+      prev.map((t) => (t.id === threadId ? { ...t, unreadCount: 0 } : t))
+    );
+    runApi(async () => {
+      const remote = await markApiThreadRead(workspaceIdRef.current, threadId);
+      setThreads((prev) =>
+        prev.map((t) => (t.id === threadId ? { ...t, ...remote } : t))
+      );
+    }, "Mark thread read");
+  }, []);
+
+  const refreshThreads = useCallback(async () => {
+    if (!isApiDataSource() || !workspaceIdRef.current) return;
+    try {
+      const remote = await listApiThreads(workspaceIdRef.current);
+      setThreads(remote);
+    } catch {
+      /* polling soft-fail */
+    }
+  }, []);
+
+  const loadThreadMessages = useCallback(async (threadId: string) => {
+    if (!isApiDataSource() || !workspaceIdRef.current || !threadId) return;
+    try {
+      const msgs = await listApiThreadMessages(
+        workspaceIdRef.current,
+        threadId
+      );
+      setMessages((prev) => {
+        const others = prev.filter((m) => m.threadId !== threadId);
+        return [...msgs, ...others];
+      });
+    } catch {
+      /* polling soft-fail */
+    }
+  }, []);
 
   const updateDeveloperProfile = useCallback(
     (id: string, patch: Partial<DeveloperProfile>) => {
@@ -2909,6 +3023,9 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       clientReviewWork,
       sendMessage,
       createThread,
+      markThreadRead,
+      refreshThreads,
+      loadThreadMessages,
       updateDeveloperProfile,
       registerDeveloper,
       setDeveloperStatus,
@@ -2996,6 +3113,9 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       clientReviewWork,
       sendMessage,
       createThread,
+      markThreadRead,
+      refreshThreads,
+      loadThreadMessages,
       updateDeveloperProfile,
       registerDeveloper,
       setDeveloperStatus,
