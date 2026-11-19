@@ -40,6 +40,7 @@ interface ProjectDetailPageProps {
 export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
   const { user } = useRequiredAuth();
   const {
+    hydrated,
     projects,
     tasks,
     milestones,
@@ -63,6 +64,17 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
     () => milestones.filter((m) => m.projectId === projectId),
     [milestones, projectId]
   );
+
+  if (!hydrated || (!project && projects.length === 0)) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border px-6 py-24 text-center">
+        <p className="text-base font-semibold">Loading project…</p>
+        <p className="text-sm text-muted-foreground">
+          Syncing workspace data from the server.
+        </p>
+      </div>
+    );
+  }
 
   if (!project) {
     return (

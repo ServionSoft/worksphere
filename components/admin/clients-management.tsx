@@ -1,12 +1,13 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import { Pencil, Plus, Search } from "lucide-react";
+import { Mail, Pencil, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/shared/section-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -31,8 +32,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ApiError } from "@/lib/api/client";
 import { demoId } from "@/lib/demo-clock";
-import type { Client, ClientStatus } from "@/lib/types";
+import type {
+  Client,
+  ClientPortalAccessStatus,
+  ClientStatus,
+} from "@/lib/types";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 
 type ClientForm = {
@@ -42,6 +48,7 @@ type ClientForm = {
   email: string;
   phone: string;
   status: ClientStatus;
+  inviteToPortal: boolean;
 };
 
 const emptyForm: ClientForm = {
@@ -51,16 +58,18 @@ const emptyForm: ClientForm = {
   email: "",
   phone: "",
   status: "prospect",
+  inviteToPortal: false,
 };
 
 export function ClientsManagement() {
-  const { clients, projects, workspace, addClient, updateClient } =
+  const { clients, projects, workspace, addClient, updateClient, inviteClient } =
     useWorkspaceStore();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ClientForm>(emptyForm);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [invitingId, setInvitingId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -70,7 +79,8 @@ export function ClientsManagement() {
         c.name.toLowerCase().includes(q) ||
         c.industry.toLowerCase().includes(q) ||
         (c.contactName ?? "").toLowerCase().includes(q) ||
-        (c.email ?? "").toLowerCase().includes(q)
+        (c.email ?? "").toLowerCase().includes(q) ||
+        (c.linkedProfileEmail ?? "").toLowerCase().includes(q)
     );
   }, [clients, query]);
 
@@ -99,6 +109,7 @@ export function ClientsManagement() {
       email: client.email ?? "",
       phone: client.phone ?? "",
       status: client.status ?? "active",
+      inviteToPortal: false,
     });
     setOpen(true);
   }
@@ -106,6 +117,10 @@ export function ClientsManagement() {
   function save() {
     if (!form.name.trim()) {
       toast.error("Client name is required");
+      return;
+    }
+    if (form.inviteToPortal && !form.email.trim()) {
+      toast.error("Email is required to invite to Client Portal");
       return;
     }
     const patch = {
@@ -124,10 +139,48 @@ export function ClientsManagement() {
         id: demoId("c"),
         workspaceId: workspace.id,
         ...patch,
+        inviteToPortal: form.inviteToPortal,
+        portalAccessStatus: form.inviteToPortal ? "invited" : "none",
       });
-      toast.success("Client added");
+      toast.success(
+        form.inviteToPortal
+          ? "Client created — portal invite sent"
+          : "Client added"
+      );
     }
     setOpen(false);
+  }
+
+  async function handleInvite(client: Client) {
+    if (!client.email && !client.inviteEmail) {
+      toast.error("Add an email on the client before inviting");
+      return;
+    }
+    setInvitingId(client.id);
+    try {
+      const remote = await inviteClient(client.id, client.email || client.inviteEmail);
+      if (!remote) return;
+      const resent =
+        client.portalAccessStatus === "invited" ||
+        client.portalAccessStatus === "active";
+      toast.success(resent ? "Invite resent" : "Portal invite sent");
+      if (remote.inviteActionLink) {
+        toast.message("Invite link (SMTP may be unverified)", {
+          description: remote.inviteActionLink,
+          duration: 20_000,
+        });
+      }
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Invite failed";
+      toast.error(message);
+    } finally {
+      setInvitingId(null);
+    }
   }
 
   return (
@@ -165,16 +218,18 @@ export function ClientsManagement() {
               <TableHead>Industry</TableHead>
               <TableHead>Contact</TableHead>
               <TableHead>Email</TableHead>
-              <TableHead>Phone</TableHead>
+              <TableHead>Portal access</TableHead>
+              <TableHead>Linked account</TableHead>
               <TableHead>Projects</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="w-20" />
+              <TableHead className="w-28" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.map((client) => {
               const linked = projectsByClient.get(client.id) ?? [];
               const expanded = expandedId === client.id;
+              const portal = client.portalAccessStatus ?? "none";
               return (
                 <Fragment key={client.id}>
                   <TableRow>
@@ -184,8 +239,26 @@ export function ClientsManagement() {
                     <TableCell className="text-muted-foreground">
                       {client.email ?? "—"}
                     </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={portalStatusClass(portal)}
+                      >
+                        {portal}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {client.phone ?? "—"}
+                      {client.linkedProfileEmail ||
+                      client.linkedProfileName ? (
+                        <span>
+                          {client.linkedProfileName ?? "—"}
+                          {client.linkedProfileEmail
+                            ? ` · ${client.linkedProfileEmail}`
+                            : ""}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
                     </TableCell>
                     <TableCell>
                       <Button
@@ -207,18 +280,31 @@ export function ClientsManagement() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => openEdit(client)}
-                      >
-                        <Pencil className="size-3.5" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={invitingId === client.id}
+                          title={
+                            portal === "none" ? "Invite to portal" : "Resend invite"
+                          }
+                          onClick={() => void handleInvite(client)}
+                        >
+                          <Mail className="size-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => openEdit(client)}
+                        >
+                          <Pencil className="size-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                   {expanded ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="bg-muted/30">
+                      <TableCell colSpan={9} className="bg-muted/30">
                         {linked.length === 0 ? (
                           <p className="text-sm text-muted-foreground">
                             No projects linked to this client.
@@ -261,7 +347,8 @@ export function ClientsManagement() {
               {editingId ? "Edit client" : "Add client"}
             </DialogTitle>
             <DialogDescription>
-              Client records are stored in the shared workspace store.
+              Create a CRM client record. Optionally invite them to the Client
+              Portal.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3">
@@ -309,6 +396,26 @@ export function ClientsManagement() {
                 </SelectContent>
               </Select>
             </div>
+            {!editingId ? (
+              <label className="flex items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+                <Checkbox
+                  checked={form.inviteToPortal}
+                  onCheckedChange={(checked) =>
+                    setForm((p) => ({
+                      ...p,
+                      inviteToPortal: Boolean(checked),
+                    }))
+                  }
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium">Invite to Client Portal</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Requires email. Sends a Supabase Auth invitation.
+                  </span>
+                </span>
+              </label>
+            ) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
@@ -328,6 +435,16 @@ function statusClass(status: ClientStatus) {
   }
   if (status === "prospect") {
     return "border-amber-200 bg-amber-50 text-amber-800";
+  }
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+function portalStatusClass(status: ClientPortalAccessStatus) {
+  if (status === "active") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+  if (status === "invited") {
+    return "border-sky-200 bg-sky-50 text-sky-800";
   }
   return "border-slate-200 bg-slate-50 text-slate-600";
 }

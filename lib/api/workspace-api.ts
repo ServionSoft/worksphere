@@ -114,7 +114,103 @@ export function patchApiWorkspace(
   });
 }
 
-export function createApiClient(workspaceId: string, client: Omit<Client, "id"> & { id?: string }) {
+export function inviteApiMember(
+  workspaceId: string,
+  input: {
+    email: string;
+    fullName: string;
+    role: "tenant_admin" | "project_manager" | "internal_member";
+  }
+) {
+  return apiFetch<TeamMember & { inviteActionLink?: string }>(
+    `/api/workspaces/${workspaceId}/members/invite`,
+    {
+      method: "POST",
+      workspaceId,
+      body: JSON.stringify(input),
+    }
+  );
+}
+
+export function patchApiMember(
+  workspaceId: string,
+  memberId: string,
+  patch: { role?: string; active?: boolean }
+) {
+  return apiFetch<TeamMember>(
+    `/api/workspaces/${workspaceId}/members/${memberId}`,
+    {
+      method: "PATCH",
+      workspaceId,
+      body: JSON.stringify(patch),
+    }
+  );
+}
+
+export type ChangeOrder = {
+  id: string;
+  workspaceId: string;
+  projectId: string | null;
+  assignmentId: string | null;
+  title: string;
+  reason: string;
+  status: string;
+  previousBudget: number | null;
+  newBudget: number | null;
+  previousDeadline: string | null;
+  newDeadline: string | null;
+  scopeDelta: string;
+  createdAt: string;
+};
+
+export function listApiChangeOrders(workspaceId: string) {
+  return apiFetch<ChangeOrder[]>(
+    `/api/workspaces/${workspaceId}/change-orders`,
+    { workspaceId }
+  );
+}
+
+export function createApiChangeOrder(
+  workspaceId: string,
+  input: {
+    title: string;
+    reason?: string;
+    projectId?: string | null;
+    assignmentId?: string | null;
+    newBudget?: number | null;
+    newDeadline?: string | null;
+    scopeDelta?: string;
+  }
+) {
+  return apiFetch<ChangeOrder>(
+    `/api/workspaces/${workspaceId}/change-orders`,
+    {
+      method: "POST",
+      workspaceId,
+      body: JSON.stringify(input),
+    }
+  );
+}
+
+export function resolveApiChangeOrder(
+  workspaceId: string,
+  changeOrderId: string,
+  decision: "approved" | "rejected"
+) {
+  return apiFetch<ChangeOrder>(
+    `/api/workspaces/${workspaceId}/change-orders/${changeOrderId}/resolve`,
+    {
+      method: "POST",
+      workspaceId,
+      body: JSON.stringify({ decision }),
+    }
+  );
+}
+
+export function createApiClient(
+  workspaceId: string,
+  client: Omit<Client, "id"> & { id?: string; inviteToPortal?: boolean }
+) {
   return apiFetch<Client>(`/api/workspaces/${workspaceId}/clients`, {
     method: "POST",
     workspaceId,
@@ -126,8 +222,24 @@ export function createApiClient(workspaceId: string, client: Omit<Client, "id"> 
       phone: client.phone,
       status: client.status,
       notes: client.notes,
+      inviteToPortal: client.inviteToPortal === true,
     }),
   });
+}
+
+export function inviteApiClient(
+  workspaceId: string,
+  clientId: string,
+  email?: string
+) {
+  return apiFetch<Client>(
+    `/api/workspaces/${workspaceId}/clients/${clientId}/invite`,
+    {
+      method: "POST",
+      workspaceId,
+      body: JSON.stringify(email ? { email } : {}),
+    }
+  );
 }
 
 export function patchApiClient(
@@ -633,12 +745,20 @@ export function sendApiMessage(
 
 export function createApiDocument(
   workspaceId: string,
-  doc: Omit<ProjectDocument, "id" | "uploadedAt">
+  doc: Omit<ProjectDocument, "id" | "uploadedAt"> & { storagePath?: string }
 ) {
   return apiFetch<ProjectDocument>(`/api/workspaces/${workspaceId}/documents`, {
     method: "POST",
     workspaceId,
-    body: JSON.stringify(doc),
+    body: JSON.stringify({
+      projectId: doc.projectId,
+      name: doc.name,
+      type: doc.type,
+      sizeLabel: doc.sizeLabel,
+      version: doc.version,
+      url: doc.url,
+      storagePath: doc.storagePath,
+    }),
   });
 }
 
@@ -646,6 +766,42 @@ export function deleteApiDocument(workspaceId: string, documentId: string) {
   return apiFetch<{ ok: true }>(
     `/api/workspaces/${workspaceId}/documents/${documentId}`,
     { method: "DELETE", workspaceId }
+  );
+}
+
+export type ProductionTemplate = {
+  id: string;
+  workspaceId: string | null;
+  code: string;
+  name: string;
+  description: string;
+  stages: unknown;
+  isSystem: boolean;
+};
+
+export function listApiProductionTemplates(workspaceId: string) {
+  return apiFetch<ProductionTemplate[]>(
+    `/api/workspaces/${workspaceId}/production-templates`,
+    { workspaceId }
+  );
+}
+
+export function createApiProductionTemplate(
+  workspaceId: string,
+  input: {
+    code: string;
+    name: string;
+    description?: string;
+    stages?: unknown;
+  }
+) {
+  return apiFetch<ProductionTemplate>(
+    `/api/workspaces/${workspaceId}/production-templates`,
+    {
+      method: "POST",
+      workspaceId,
+      body: JSON.stringify(input),
+    }
   );
 }
 

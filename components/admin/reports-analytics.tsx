@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -34,6 +34,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { fetchReportsSummary } from "@/lib/api/platform-api";
+import { isApiDataSource } from "@/lib/data-source";
 import { projectsByStatus, taskCompletion } from "@/lib/mock-data";
 import { DEMO_NOW } from "@/lib/demo-clock";
 import { formatCurrency } from "@/lib/format";
@@ -114,10 +116,28 @@ function downloadBlob(filename: string, content: string, mime: string) {
 }
 
 export function ReportsAnalytics() {
-  const { projects, tasks, developers, opportunities, activity } =
+  const { workspace, projects, tasks, developers, opportunities, activity } =
     useWorkspaceStore();
   const [range, setRange] = useState<string>("30d");
   const [projectId, setProjectId] = useState<string>("all");
+  const [apiSummary, setApiSummary] = useState<Record<string, number> | null>(
+    null
+  );
+
+  useEffect(() => {
+    if (!isApiDataSource()) return;
+    let cancelled = false;
+    void fetchReportsSummary(workspace.id)
+      .then((data) => {
+        if (!cancelled) setApiSummary(data);
+      })
+      .catch(() => {
+        if (!cancelled) setApiSummary(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace.id]);
 
   const { start: rangeStart, end: rangeEnd } = useMemo(
     () => rangeBounds(range),
@@ -281,6 +301,36 @@ export function ReportsAnalytics() {
           </>
         }
       />
+
+      {apiSummary ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {(
+            [
+              ["Active projects", apiSummary.activeProjects],
+              ["Overdue tasks", apiSummary.overdueTasks],
+              ["Pending approvals", apiSummary.pendingApprovals],
+              ["Team members", apiSummary.teamMembers],
+              ["Invoice total", apiSummary.invoiceTotal],
+              ["Invoice paid", apiSummary.invoicePaid],
+              ["Earnings pending", apiSummary.earningsPending],
+              ["Completed projects", apiSummary.completedProjects],
+            ] as const
+          ).map(([label, value]) => (
+            <div
+              key={label}
+              className="rounded-xl border border-border bg-card px-4 py-3"
+            >
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums">
+                {label.toLowerCase().includes("invoice") ||
+                label.toLowerCase().includes("earnings")
+                  ? formatCurrency(Number(value ?? 0))
+                  : Number(value ?? 0)}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         <Select value={range} onValueChange={(v) => setRange(v ?? "30d")}>

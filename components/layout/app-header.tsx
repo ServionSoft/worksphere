@@ -191,7 +191,16 @@ export function AppHeader({ onOpenMobileNav, onQuickCreate }: AppHeaderProps) {
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={() => toast("Opened notification center")}
+              onClick={() => {
+                const portal = user.portal;
+                if (portal === "client") {
+                  router.push("/client/notifications");
+                } else if (portal === "developer") {
+                  router.push("/developer/notifications");
+                } else {
+                  router.push("/approvals");
+                }
+              }}
             >
               View all notifications
             </DropdownMenuItem>
@@ -202,7 +211,8 @@ export function AppHeader({ onOpenMobileNav, onQuickCreate }: AppHeaderProps) {
           variant="ghost"
           size="icon-sm"
           aria-label="Help"
-          onClick={() => toast("Help center coming soon")}
+          render={<a href="mailto:support@worksphere.app" />}
+          nativeButton={false}
         >
           <HelpCircle />
         </Button>

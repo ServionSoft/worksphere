@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProductionTemplatesPanel } from "@/components/admin/production-templates-panel";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useRequiredAuth } from "@/lib/auth-store";
 import { useWorkspaceStore } from "@/lib/workspace-store";
@@ -151,6 +152,7 @@ export function WorkspaceSettings() {
         <TabsList variant="line" className="w-full justify-start overflow-x-auto">
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="workspace">Workspace</TabsTrigger>
+          <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           <TabsTrigger value="roles">Roles</TabsTrigger>
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
@@ -171,6 +173,10 @@ export function WorkspaceSettings() {
               ))}
             </dl>
           </SectionCard>
+        </TabsContent>
+
+        <TabsContent value="templates" className="mt-4">
+          <ProductionTemplatesPanel />
         </TabsContent>
 
         <TabsContent value="workspace" className="mt-4">

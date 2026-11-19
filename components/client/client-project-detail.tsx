@@ -24,6 +24,7 @@ import { toast } from "sonner";
 export function ClientProjectDetail({ projectId }: { projectId: string }) {
   const { user, can } = useRequiredAuth();
   const {
+    workspace,
     projects,
     tasks,
     milestones,
@@ -277,11 +278,22 @@ export function ClientProjectDetail({ projectId }: { projectId: string }) {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() =>
-                      toast.message("Download simulated", {
-                        description: `${doc.name} metadata only — no cloud upload.`,
-                      })
-                    }
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          const { openDocumentDownload } = await import(
+                            "@/lib/supabase/document-storage"
+                          );
+                          await openDocumentDownload(workspace.id, doc.id);
+                        } catch (err) {
+                          toast.error(
+                            err instanceof Error
+                              ? err.message
+                              : "Download failed"
+                          );
+                        }
+                      })();
+                    }}
                   >
                     Download
                   </Button>

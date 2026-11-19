@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { ChangeOrdersPanel } from "@/components/admin/change-orders-panel";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -88,7 +89,7 @@ export function FinanceOverview() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Finance"
-        description="Budgets, client invoices, developer earnings and outstanding balances (demo)."
+        description="Budgets, invoices, earnings, and commercial change orders."
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -113,6 +114,7 @@ export function FinanceOverview() {
           <TabsTrigger value="earnings">
             Earnings ({earnings.length})
           </TabsTrigger>
+          <TabsTrigger value="change-orders">Change orders</TabsTrigger>
         </TabsList>
 
         <TabsContent value="budgets" className="mt-4">
@@ -374,6 +376,10 @@ export function FinanceOverview() {
               </TableBody>
             </Table>
           </SectionCard>
+        </TabsContent>
+
+        <TabsContent value="change-orders" className="mt-4">
+          <ChangeOrdersPanel />
         </TabsContent>
       </Tabs>
     </div>

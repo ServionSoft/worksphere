@@ -21,6 +21,7 @@ import {
   clientReviewApiWork,
   confirmApiAssignment,
   createApiClient,
+  inviteApiClient,
   createApiComment,
   createApiDocument,
   createApiInvoice,
@@ -272,7 +273,9 @@ interface WorkspaceStoreValue {
   updateMilestoneStatus: (milestoneId: string, status: MilestoneStatus) => void;
   deleteMilestone: (id: string) => void;
   addComment: (comment: Omit<ProjectComment, "id" | "createdAt">) => void;
-  addDocument: (doc: Omit<ProjectDocument, "id" | "uploadedAt">) => void;
+  addDocument: (
+    doc: Omit<ProjectDocument, "id" | "uploadedAt"> & { storagePath?: string }
+  ) => void;
   deleteDocument: (id: string) => void;
   updateSubmissionStatus: (
     submissionId: string,
@@ -284,8 +287,9 @@ interface WorkspaceStoreValue {
   authorizeSubmissionForClient: (submissionId: string, note?: string) => void;
   getProjectTasks: (projectId: string) => Task[];
 
-  addClient: (client: Client) => void;
+  addClient: (client: Client & { inviteToPortal?: boolean }) => void;
   updateClient: (id: string, patch: Partial<Client>) => void;
+  inviteClient: (clientId: string, email?: string) => Promise<Client | null>;
   addTeamMember: (member: TeamMember) => void;
   updateTeamMember: (id: string, patch: Partial<TeamMember>) => void;
 
@@ -416,6 +420,42 @@ function seedState() {
   };
 }
 
+/** API mode must never render demo seed IDs (p1/ws1) before bootstrap. */
+function emptyApiState() {
+  return {
+    workspaceId: "",
+    workspaces: [] as Workspace[],
+    projects: [] as Project[],
+    tasks: [] as Task[],
+    milestones: [] as Milestone[],
+    documents: [] as ProjectDocument[],
+    comments: [] as ProjectComment[],
+    submissions: [] as Submission[],
+    activity: [] as ActivityItem[],
+    opportunities: [] as MarketplaceOpportunity[],
+    quotations: [] as Quotation[],
+    assignments: [] as DeveloperAssignment[],
+    workSubmissions: [] as WorkSubmissionVersion[],
+    threads: [] as MessageThread[],
+    messages: [] as PortalMessage[],
+    invoices: [] as Invoice[],
+    earnings: [] as EarningRecord[],
+    portalNotifications: [] as PortalNotification[],
+    developers: [] as DeveloperProfile[],
+    saved: [] as SavedOpportunity[],
+    clients: [] as Client[],
+    team: [] as TeamMember[],
+    searchQuery: "",
+  };
+}
+
+const EMPTY_WORKSPACE: Workspace = {
+  id: "",
+  name: "Loading…",
+  plan: "Pro",
+  color: "#4F46E5",
+};
+
 function applyBootstrap(
   data: WorkspaceBootstrap,
   setters: {
@@ -490,41 +530,49 @@ function applyBootstrap(
 
 export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   const seed = useMemo(() => seedState(), []);
+  const apiEmpty = useMemo(() => emptyApiState(), []);
   const apiMode = isApiDataSource();
+  const initial = apiMode ? apiEmpty : seed;
   const { isAuthenticated, hydrated: authHydrated, user } = useAuth();
   const [hydrated, setHydrated] = useState(false);
-  const [workspaceId, setWorkspaceIdState] = useState(seed.workspaceId);
+  const [workspaceId, setWorkspaceIdState] = useState(initial.workspaceId);
   const [workspaceDirectory, setWorkspaceDirectory] = useState<Workspace[]>(
-    seed.workspaces
+    initial.workspaces
   );
   const workspaceIdRef = useRef(workspaceId);
   useEffect(() => {
     workspaceIdRef.current = workspaceId;
     if (apiMode) setApiWorkspaceId(workspaceId);
   }, [workspaceId, apiMode]);
-  const [projects, setProjects] = useState<Project[]>(seed.projects);
-  const [tasks, setTasks] = useState<Task[]>(seed.tasks);
-  const [milestones, setMilestones] = useState<Milestone[]>(seed.milestones);
-  const [documents, setDocuments] = useState<ProjectDocument[]>(seed.documents);
-  const [comments, setComments] = useState<ProjectComment[]>(seed.comments);
-  const [submissions, setSubmissions] = useState<Submission[]>(seed.submissions);
-  const [activity, setActivity] = useState<ActivityItem[]>(seed.activity);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [opportunities, setOpportunities] = useState(seed.opportunities);
-  const [quotations, setQuotations] = useState(seed.quotations);
-  const [assignments, setAssignments] = useState(seed.assignments);
-  const [workSubmissions, setWorkSubmissions] = useState(seed.workSubmissions);
-  const [threads, setThreads] = useState(seed.threads);
-  const [messages, setMessages] = useState(seed.messages);
-  const [invoices, setInvoices] = useState<Invoice[]>(seed.invoices);
-  const [earnings, setEarnings] = useState(seed.earnings);
-  const [portalNotifications, setPortalNotifications] = useState(
-    seed.portalNotifications
+  const [projects, setProjects] = useState<Project[]>(initial.projects);
+  const [tasks, setTasks] = useState<Task[]>(initial.tasks);
+  const [milestones, setMilestones] = useState<Milestone[]>(initial.milestones);
+  const [documents, setDocuments] = useState<ProjectDocument[]>(
+    initial.documents
   );
-  const [developers, setDevelopers] = useState(seed.developers);
-  const [saved, setSaved] = useState(seed.saved);
-  const [clients, setClients] = useState<Client[]>(seed.clients);
-  const [team, setTeam] = useState<TeamMember[]>(seed.team);
+  const [comments, setComments] = useState<ProjectComment[]>(initial.comments);
+  const [submissions, setSubmissions] = useState<Submission[]>(
+    initial.submissions
+  );
+  const [activity, setActivity] = useState<ActivityItem[]>(initial.activity);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [opportunities, setOpportunities] = useState(initial.opportunities);
+  const [quotations, setQuotations] = useState(initial.quotations);
+  const [assignments, setAssignments] = useState(initial.assignments);
+  const [workSubmissions, setWorkSubmissions] = useState(
+    initial.workSubmissions
+  );
+  const [threads, setThreads] = useState(initial.threads);
+  const [messages, setMessages] = useState(initial.messages);
+  const [invoices, setInvoices] = useState<Invoice[]>(initial.invoices);
+  const [earnings, setEarnings] = useState(initial.earnings);
+  const [portalNotifications, setPortalNotifications] = useState(
+    initial.portalNotifications
+  );
+  const [developers, setDevelopers] = useState(initial.developers);
+  const [saved, setSaved] = useState(initial.saved);
+  const [clients, setClients] = useState<Client[]>(initial.clients);
+  const [team, setTeam] = useState<TeamMember[]>(initial.team);
   const skipPersist = useRef(true);
 
   const bootstrapSetters = useMemo(
@@ -581,6 +629,27 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
           if (cancelled) return;
           if (directory.length === 0) {
             setWorkspaceDirectory([]);
+            setWorkspaceIdState("");
+            setProjects([]);
+            setTasks([]);
+            setMilestones([]);
+            setDocuments([]);
+            setComments([]);
+            setSubmissions([]);
+            setActivity([]);
+            setOpportunities([]);
+            setQuotations([]);
+            setAssignments([]);
+            setWorkSubmissions([]);
+            setThreads([]);
+            setMessages([]);
+            setInvoices([]);
+            setEarnings([]);
+            setPortalNotifications([]);
+            setDevelopers([]);
+            setSaved([]);
+            setClients([]);
+            setTeam([]);
             setHydrated(true);
             return;
           }
@@ -588,8 +657,33 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
             directory.find((w) => w.id === workspaceIdRef.current)?.id ??
             directory[0].id;
           await reloadBootstrap(preferred, directory);
+          if (cancelled) return;
         } catch {
-          /* auth/profile may still be provisioning */
+          /* auth/profile may still be provisioning — keep empty, never demo seed */
+          if (!cancelled) {
+            setWorkspaceDirectory([]);
+            setWorkspaceIdState("");
+            setProjects([]);
+            setTasks([]);
+            setMilestones([]);
+            setDocuments([]);
+            setComments([]);
+            setSubmissions([]);
+            setActivity([]);
+            setOpportunities([]);
+            setQuotations([]);
+            setAssignments([]);
+            setWorkSubmissions([]);
+            setThreads([]);
+            setMessages([]);
+            setInvoices([]);
+            setEarnings([]);
+            setPortalNotifications([]);
+            setDevelopers([]);
+            setSaved([]);
+            setClients([]);
+            setTeam([]);
+          }
         } finally {
           if (!cancelled) setHydrated(true);
         }
@@ -714,7 +808,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   const workspace =
     workspaceDirectory.find((item) => item.id === workspaceId) ??
     workspaceDirectory[0] ??
-    seedWorkspaces[0];
+    (apiMode ? EMPTY_WORKSPACE : seedWorkspaces[0]);
 
   const notify = useCallback(
     (
@@ -1373,11 +1467,17 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const addDocument = useCallback(
-    (doc: Omit<ProjectDocument, "id" | "uploadedAt">) => {
-      const local = { ...doc, id: demoId("doc"), uploadedAt: DEMO_TS };
+    (
+      doc: Omit<ProjectDocument, "id" | "uploadedAt"> & { storagePath?: string }
+    ) => {
+      const { storagePath, ...rest } = doc;
+      const local = { ...rest, id: demoId("doc"), uploadedAt: DEMO_TS };
       setDocuments((prev) => [local, ...prev]);
       runApi(async () => {
-        const remote = await createApiDocument(workspaceIdRef.current, doc);
+        const remote = await createApiDocument(workspaceIdRef.current, {
+          ...rest,
+          storagePath,
+        });
         setDocuments((prev) =>
           prev.map((d) => (d.id === local.id ? remote : d))
         );
@@ -1542,11 +1642,12 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
     [tasks]
   );
 
-  const addClient = useCallback((client: Client) => {
+  const addClient = useCallback((client: Client & { inviteToPortal?: boolean }) => {
     setClients((prev) => [client, ...prev]);
     runApi(async () => {
       const remote = await createApiClient(workspaceIdRef.current, client);
       setClients((prev) => prev.map((c) => (c.id === client.id ? remote : c)));
+      return remote;
     }, "Create client");
   }, []);
 
@@ -1557,6 +1658,30 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       "Update client"
     );
   }, []);
+
+  const inviteClient = useCallback(async (clientId: string, email?: string) => {
+    if (!isApiDataSource()) {
+      const next: Client = {
+        ...(clients.find((c) => c.id === clientId) as Client),
+        portalAccessStatus: "invited",
+        invitedAt: new Date().toISOString(),
+        inviteEmail: email,
+      };
+      setClients((prev) =>
+        prev.map((c) => (c.id === clientId ? { ...c, ...next } : c))
+      );
+      return next;
+    }
+    const remote = await inviteApiClient(
+      workspaceIdRef.current,
+      clientId,
+      email
+    );
+    setClients((prev) =>
+      prev.map((c) => (c.id === clientId ? { ...c, ...remote } : c))
+    );
+    return remote;
+  }, [clients]);
 
   const addTeamMember = useCallback((member: TeamMember) => {
     setTeam((prev) => [member, ...prev]);
@@ -2724,6 +2849,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       getProjectTasks,
       addClient,
       updateClient,
+      inviteClient,
       addTeamMember,
       updateTeamMember,
       opportunities: opportunities.filter(
@@ -2847,6 +2973,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       getProjectTasks,
       addClient,
       updateClient,
+      inviteClient,
       addTeamMember,
       updateTeamMember,
       addOpportunity,

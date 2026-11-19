@@ -41,6 +41,7 @@ const developerWorkStatuses: TaskStatus[] = [
 export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
   const { user } = useRequiredAuth();
   const {
+    workspace,
     projects,
     assignments,
     tasks,
@@ -552,11 +553,22 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() =>
-                      toast.message("Download simulated", {
-                        description: `${doc.name} — demo metadata only.`,
-                      })
-                    }
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          const { openDocumentDownload } = await import(
+                            "@/lib/supabase/document-storage"
+                          );
+                          await openDocumentDownload(workspace.id, doc.id);
+                        } catch (err) {
+                          toast.error(
+                            err instanceof Error
+                              ? err.message
+                              : "Download failed"
+                          );
+                        }
+                      })();
+                    }}
                   >
                     Download
                   </Button>

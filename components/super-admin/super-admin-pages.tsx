@@ -56,6 +56,7 @@ import {
   type PlatformSubscription,
   type PlatformTenant,
 } from "@/lib/mock-platform";
+import { patchPlatformTenant } from "@/lib/api/platform-api";
 import {
   usePlatformActivityData,
   usePlatformSubscriptionsData,
@@ -125,15 +126,29 @@ function useTenantDirectory() {
     [baseTenants, statusOverrides, planOverrides]
   );
 
-  function setStatus(id: string, status: TenantStatus) {
+  async function setStatus(id: string, status: TenantStatus) {
+    if (status !== "active" && status !== "suspended") {
+      toast.error("Only active/suspended can be persisted");
+      return;
+    }
+    if (apiMode) {
+      try {
+        await patchPlatformTenant(id, status);
+        setStatusOverrides((prev) => ({ ...prev, [id]: status }));
+        toast.success(
+          status === "suspended" ? "Tenant suspended" : "Tenant activated"
+        );
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to update tenant"
+        );
+      }
+      return;
+    }
     setStatusOverrides((prev) => ({ ...prev, [id]: status }));
     toast.success(
       status === "suspended" ? "Tenant suspended" : "Tenant activated",
-      {
-        description: apiMode
-          ? "Override applied locally; tenant list loaded from API."
-          : "Demo state saved to localStorage.",
-      }
+      { description: "Demo state saved to localStorage." }
     );
   }
 
@@ -424,7 +439,7 @@ export function SuperAdminTenants() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Tenants"
-        description="Directory with suspend / activate and plan assignment stored in localStorage."
+        description="Directory with suspend / activate (persisted via platform API when live)."
       />
       <Input
         value={query}
@@ -865,7 +880,7 @@ export function SuperAdminActivity() {
         <ul className="list-disc space-y-1 pl-4 text-sm text-muted-foreground">
           <li>Failed login spikes and SSO anomalies would appear here in production.</li>
           <li>Manual notes and seed activity are stored in localStorage for this demo.</li>
-          <li>Tenant suspend/activate changes are local and not audited remotely.</li>
+          <li>Tenant suspend/activate persists via platform API and writes platform activity when live.</li>
         </ul>
       </SectionCard>
     </div>

@@ -4,6 +4,19 @@ export function fetchPlatformTenants() {
   return apiFetch<unknown[]>("/api/platform/tenants");
 }
 
+export function patchPlatformTenant(
+  tenantId: string,
+  status: "active" | "suspended"
+) {
+  return apiFetch<{ id: string; name: string; status: string }>(
+    `/api/platform/tenants/${tenantId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }
+  );
+}
+
 export function fetchPlatformSubscriptions() {
   return apiFetch<unknown[]>("/api/platform/subscriptions");
 }

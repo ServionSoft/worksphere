@@ -33,24 +33,35 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ApiError } from "@/lib/api/client";
+import { inviteApiMember, patchApiMember } from "@/lib/api/workspace-api";
+import { isApiDataSource } from "@/lib/data-source";
 import { demoId } from "@/lib/demo-clock";
 import { formatCurrency } from "@/lib/format";
 import type { DeveloperProfile } from "@/lib/portal-types";
 import type { TeamMember } from "@/lib/types";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 
+type MemberRole = "tenant_admin" | "project_manager" | "internal_member";
+
 type MemberForm = {
   name: string;
   email: string;
-  role: string;
+  role: MemberRole;
   active: boolean;
 };
 
 const emptyMember: MemberForm = {
   name: "",
   email: "",
-  role: "Project Manager",
+  role: "project_manager",
   active: true,
+};
+
+const ROLE_LABELS: Record<MemberRole, string> = {
+  tenant_admin: "Tenant Admin",
+  project_manager: "Project Manager",
+  internal_member: "Internal Member",
 };
 
 export function TeamManagement() {
@@ -92,42 +103,93 @@ export function TeamManagement() {
   }
 
   function openEditMember(member: TeamMember) {
-    setEditingId(member.id);
+    setEditingId(member.memberId ?? member.id);
+    const role =
+      member.permissionRole === "tenant_admin" ||
+      member.permissionRole === "project_manager" ||
+      member.permissionRole === "internal_member"
+        ? member.permissionRole
+        : "internal_member";
     setForm({
       name: member.name,
       email: member.email,
-      role: member.role,
+      role,
       active: member.active !== false,
     });
     setMemberOpen(true);
   }
 
-  function saveMember() {
+  async function saveMember() {
     if (!form.name.trim() || !form.email.trim()) {
       toast.error("Name and email are required");
       return;
     }
-    if (editingId) {
-      updateTeamMember(editingId, {
-        name: form.name.trim(),
-        email: form.email.trim(),
-        role: form.role.trim() || "Member",
-        active: form.active,
-      });
-      toast.success("Member updated");
-    } else {
-      addTeamMember({
-        id: demoId("u"),
-        name: form.name.trim(),
-        email: form.email.trim(),
-        role: form.role.trim() || "Member",
-        workspaceId: workspace.id,
-        active: form.active,
-        permissionRole: "internal_member",
-      });
-      toast.success("Member added");
+    try {
+      if (editingId) {
+        if (isApiDataSource()) {
+          const remote = await patchApiMember(workspace.id, editingId, {
+            role: form.role,
+            active: form.active,
+          });
+          updateTeamMember(remote.id, {
+            ...remote,
+            role: ROLE_LABELS[form.role],
+            permissionRole: form.role,
+            active: form.active,
+            memberId: remote.memberId ?? editingId,
+          });
+        } else {
+          updateTeamMember(editingId, {
+            name: form.name.trim(),
+            email: form.email.trim(),
+            role: ROLE_LABELS[form.role],
+            permissionRole: form.role,
+            active: form.active,
+          });
+        }
+        toast.success("Member updated");
+      } else if (isApiDataSource()) {
+        const remote = await inviteApiMember(workspace.id, {
+          email: form.email.trim(),
+          fullName: form.name.trim(),
+          role: form.role,
+        });
+        addTeamMember({
+          ...remote,
+          id: remote.id,
+          name: remote.name || form.name.trim(),
+          email: remote.email || form.email.trim(),
+          role: ROLE_LABELS[form.role],
+          permissionRole: form.role,
+          workspaceId: workspace.id,
+          active: true,
+          memberId: remote.memberId,
+        });
+        toast.success("Invitation sent");
+        if (remote.inviteActionLink) {
+          toast.message("Invite link (SMTP may be limited)", {
+            description: remote.inviteActionLink,
+            duration: 20_000,
+          });
+        }
+      } else {
+        addTeamMember({
+          id: demoId("u"),
+          name: form.name.trim(),
+          email: form.email.trim(),
+          role: ROLE_LABELS[form.role],
+          workspaceId: workspace.id,
+          active: form.active,
+          permissionRole: form.role,
+        });
+        toast.success("Member added (demo)");
+      }
+      setMemberOpen(false);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "Failed to save member"
+      );
     }
-    setMemberOpen(false);
   }
 
   function saveDeveloperProfile() {
@@ -365,20 +427,21 @@ export function TeamManagement() {
               <Select
                 value={form.role}
                 onValueChange={(v) =>
-                  typeof v === "string" && setForm((p) => ({ ...p, role: v }))
+                  typeof v === "string" &&
+                  setForm((p) => ({ ...p, role: v as MemberRole }))
                 }
               >
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Workspace Admin">Workspace Admin</SelectItem>
-                  <SelectItem value="Project Manager">Project Manager</SelectItem>
-                  <SelectItem value="Engineering Lead">Engineering Lead</SelectItem>
-                  <SelectItem value="Designer">Designer</SelectItem>
-                  <SelectItem value="QA Lead">QA Lead</SelectItem>
-                  <SelectItem value="Developer">Developer</SelectItem>
-                  <SelectItem value="Member">Member</SelectItem>
+                  <SelectItem value="tenant_admin">Tenant Admin</SelectItem>
+                  <SelectItem value="project_manager">
+                    Project Manager
+                  </SelectItem>
+                  <SelectItem value="internal_member">
+                    Internal Member
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -396,7 +459,9 @@ export function TeamManagement() {
             <Button variant="outline" onClick={() => setMemberOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={saveMember}>Save</Button>
+            <Button onClick={() => void saveMember()}>
+              {editingId ? "Save" : "Invite"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

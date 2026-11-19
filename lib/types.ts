@@ -48,6 +48,8 @@ export interface Workspace {
 
 export type ClientStatus = "active" | "inactive" | "prospect";
 
+export type ClientPortalAccessStatus = "none" | "invited" | "active";
+
 export interface Client {
   id: string;
   name: string;
@@ -58,16 +60,26 @@ export interface Client {
   phone?: string;
   status?: ClientStatus;
   notes?: string;
+  primaryProfileId?: string | null;
+  portalAccessStatus?: ClientPortalAccessStatus;
+  invitedAt?: string | null;
+  inviteEmail?: string;
+  linkedProfileName?: string;
+  linkedProfileEmail?: string;
+  /** Present on invite responses when Auth generate_link succeeds (SMTP fallback). */
+  inviteActionLink?: string;
 }
 
 export interface TeamMember extends User {
   workspaceId?: string;
   title?: string;
   active?: boolean;
+  memberId?: string;
   permissionRole?:
     | "tenant_admin"
     | "project_manager"
     | "internal_member";
+  inviteActionLink?: string;
 }
 
 export interface Project {

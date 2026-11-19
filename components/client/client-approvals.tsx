@@ -256,8 +256,8 @@ export function ClientApprovalsPage() {
                     size="sm"
                     variant="outline"
                     onClick={() =>
-                      toast.message("File download simulated", {
-                        description: `${file} — local metadata only`,
+                      toast.message("File download unavailable", {
+                        description: `${file} — signed Storage URL not configured`,
                       })
                     }
                   >
