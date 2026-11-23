@@ -19,6 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { ChangeOrdersPanel } from "@/components/admin/change-orders-panel";
 import { useWorkspaceStore } from "@/lib/workspace-store";
+import { MilestoneFinancePanel } from "@/components/projects/detail/milestone-finance-panel";
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -108,6 +109,7 @@ export function FinanceOverview() {
       <Tabs defaultValue="budgets">
         <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="budgets">Budgets</TabsTrigger>
+          <TabsTrigger value="profitability">Milestone profitability</TabsTrigger>
           <TabsTrigger value="invoices">
             Invoices ({invoices.length})
           </TabsTrigger>
@@ -116,6 +118,20 @@ export function FinanceOverview() {
           </TabsTrigger>
           <TabsTrigger value="change-orders">Change orders</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="profitability" className="mt-4">
+          {activeProjects[0]?.id ? (
+            <>
+              <MilestoneFinancePanel projectId={activeProjects[0].id} />
+              <p className="mt-2 text-xs text-muted-foreground">
+                Showing {activeProjects[0].name}. Open Project → Finance for
+                other projects.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">No active projects.</p>
+          )}
+        </TabsContent>
 
         <TabsContent value="budgets" className="mt-4">
           <SectionCard

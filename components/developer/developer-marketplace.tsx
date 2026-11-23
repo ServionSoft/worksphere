@@ -35,6 +35,7 @@ export function DeveloperMarketplacePage() {
   const [query, setQuery] = useState("");
   const [skill, setSkill] = useState("all");
   const [category, setCategory] = useState("all");
+  const [kind, setKind] = useState<"all" | "milestone" | "project">("all");
   const [pricing, setPricing] = useState<"all" | "fixed" | "quotation">("all");
   const [sort, setSort] = useState<"newest" | "deadline" | "budget">("newest");
   const [tab, setTab] = useState<MarketTab>("browse");
@@ -84,6 +85,11 @@ export function DeveloperMarketplacePage() {
       .filter((o) =>
         category === "all" ? true : o.category === category
       )
+      .filter((o) => {
+        if (kind === "all") return true;
+        const isMs = Boolean(o.isMilestoneOpportunity || o.milestoneId || o.category === "milestone");
+        return kind === "milestone" ? isMs : !isMs;
+      })
       .filter(
         (o) =>
           !q ||
@@ -101,6 +107,7 @@ export function DeveloperMarketplacePage() {
     query,
     skill,
     category,
+    kind,
     pricing,
     sort,
     tab,
@@ -204,6 +211,15 @@ export function DeveloperMarketplacePage() {
               </select>
               <select
                 className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                value={kind}
+                onChange={(e) => setKind(e.target.value as typeof kind)}
+              >
+                <option value="all">All types</option>
+                <option value="milestone">Milestone work</option>
+                <option value="project">Full project</option>
+              </select>
+              <select
+                className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
                 value={pricing}
                 onChange={(e) => setPricing(e.target.value as typeof pricing)}
               >
@@ -233,12 +249,19 @@ export function DeveloperMarketplacePage() {
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
-                      <Link
-                        href={`/developer/marketplace/${opp.id}`}
-                        className="text-sm font-semibold hover:text-primary hover:underline"
-                      >
-                        {opp.title}
-                      </Link>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/developer/marketplace/${opp.id}`}
+                          className="text-sm font-semibold hover:text-primary hover:underline"
+                        >
+                          {opp.title}
+                        </Link>
+                        {opp.isMilestoneOpportunity ||
+                        opp.milestoneId ||
+                        opp.category === "milestone" ? (
+                          <Badge variant="outline">Milestone</Badge>
+                        ) : null}
+                      </div>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {opp.summary}
                       </p>

@@ -102,6 +102,9 @@ export interface Project {
   currency: string;
   archived?: boolean;
   developerIds?: string[];
+  objectives?: string;
+  scopeText?: string;
+  scopeDocumentId?: string | null;
 }
 
 export type TaskClientApprovalStatus =
@@ -133,15 +136,47 @@ export interface Task {
   clientApprovalStatus?: TaskClientApprovalStatus;
 }
 
+export type MilestonePlanStatus = "suggested" | "approved" | "archived";
+export type MilestoneCommercialStatus =
+  | "unpriced"
+  | "priced"
+  | "awarded"
+  | "invoiced"
+  | "paid";
+export type MilestoneMarketplaceStatus =
+  | "not_published"
+  | "published"
+  | "filled"
+  | "closed";
+
 export interface Milestone {
   id: string;
   projectId: string;
   title: string;
   description: string;
+  publicDescription?: string;
   dueDate: string;
   status: MilestoneStatus;
   deliverables: string[];
   progress: number;
+  weight?: number;
+  sortOrder?: number;
+  planStatus?: MilestonePlanStatus;
+  acceptanceCriteria?: string;
+  requiredSkills?: string[];
+  dependencyIds?: string[];
+  estimatedDays?: number | null;
+  currency?: string;
+  commercialStatus?: MilestoneCommercialStatus;
+  marketplaceStatus?: MilestoneMarketplaceStatus;
+  opportunityId?: string | null;
+  source?: "manual" | "ai";
+  approvedAt?: string | null;
+  clientPrice?: number;
+  developerBudget?: number;
+  awardedDeveloperCost?: number | null;
+  grossMargin?: number;
+  grossMarginPct?: number | null;
 }
 
 export interface ProjectDocument {

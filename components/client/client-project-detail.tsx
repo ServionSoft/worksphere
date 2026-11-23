@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SectionCard } from "@/components/shared/section-card";
 import { ProjectStatusBadge } from "@/components/shared/status-badge";
 import { MilestoneStatusBadge } from "@/components/shared/milestone-badge";
+import { MilestoneReviewForm } from "@/components/client/milestone-review-form";
 import { useRequiredAuth } from "@/lib/auth-store";
 import { formatCurrency, formatDate, formatShortDate } from "@/lib/format";
 import {
@@ -209,29 +210,41 @@ export function ClientProjectDetail({ projectId }: { projectId: string }) {
                 projectTasks
               );
               return (
-                <SectionCard
-                  key={m.id}
-                  title={m.title}
-                  description={`Due ${formatDate(m.dueDate)}`}
-                  action={<MilestoneStatusBadge status={displayStatus} />}
-                >
-                  <p className="text-sm text-muted-foreground">{m.description}</p>
-                  <ul className="mt-3 flex flex-col gap-1.5">
-                    {m.deliverables.map((d) => (
-                      <li
-                        key={d}
-                        className="rounded-lg border border-border px-3 py-2 text-sm"
-                      >
-                        {d}
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    {displayStatus === "completed"
-                      ? "Marked Done after your approval."
-                      : "Done only after admin sends it for review and you approve."}
-                  </p>
-                </SectionCard>
+                <div key={m.id} className="space-y-3">
+                  <SectionCard
+                    title={m.title}
+                    description={`Due ${formatDate(m.dueDate)}${
+                      m.clientPrice != null
+                        ? ` · ${formatCurrency(m.clientPrice, m.currency ?? "USD")}`
+                        : ""
+                    }`}
+                    action={<MilestoneStatusBadge status={displayStatus} />}
+                  >
+                    <p className="text-sm text-muted-foreground">
+                      {m.publicDescription || m.description}
+                    </p>
+                    <ul className="mt-3 flex flex-col gap-1.5">
+                      {m.deliverables.map((d) => (
+                        <li
+                          key={d}
+                          className="rounded-lg border border-border px-3 py-2 text-sm"
+                        >
+                          {d}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      {displayStatus === "completed"
+                        ? "Marked Done after your approval."
+                        : "Done only after admin sends it for review and you approve."}
+                    </p>
+                  </SectionCard>
+                  <MilestoneReviewForm
+                    milestoneId={m.id}
+                    milestoneTitle={m.title}
+                    enabled={m.status === "completed"}
+                  />
+                </div>
               );
             })}
           </div>

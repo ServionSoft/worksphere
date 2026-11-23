@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { Bell, LogOut, Menu, PanelLeft, PanelLeftClose } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,7 @@ export function PortalShell({
   brandSubtitle,
 }: PortalShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, logout } = useRequiredAuth();
   const { portalNotifications, markNotificationRead } = useWorkspaceStore();
   const [collapsed, setCollapsed] = useLocalStorage(
@@ -155,19 +156,41 @@ export function PortalShell({
                       className="flex flex-col items-start gap-0.5 py-2"
                       onClick={() => {
                         markNotificationRead(n.id);
-                        toast.message(n.title, { description: n.body });
+                        if (n.href) router.push(n.href);
+                        else toast.message(n.title, { description: n.body });
                       }}
                     >
-                      <span className="font-medium">{n.title}</span>
+                      <span className="flex w-full items-center justify-between gap-2">
+                        <span className="font-medium">{n.title}</span>
+                        {!n.read ? (
+                          <span className="size-1.5 rounded-full bg-primary" />
+                        ) : null}
+                      </span>
                       <span className="text-xs text-muted-foreground">
                         {n.body}
                       </span>
+                      {n.category ? (
+                        <span className="text-[10px] uppercase text-muted-foreground">
+                          {n.category}
+                        </span>
+                      ) : null}
                     </DropdownMenuItem>
                   ))}
                   {notes.length === 0 ? (
                     <DropdownMenuItem disabled>No notifications</DropdownMenuItem>
                   ) : null}
                 </DropdownMenuGroup>
+                <DropdownMenuItem
+                  onClick={() =>
+                    router.push(
+                      portal === "client"
+                        ? "/client/notifications"
+                        : "/developer/notifications"
+                    )
+                  }
+                >
+                  View all notifications
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -195,9 +218,7 @@ export function PortalShell({
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    onClick={() =>
-                      toast("Profile settings are demo-only for now")
-                    }
+                    onClick={() => router.push(`/${portal}/settings`)}
                   >
                     Account
                   </DropdownMenuItem>

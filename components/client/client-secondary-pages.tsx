@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MessagingInbox } from "@/components/messaging/messaging-inbox";
+import { NotificationCentre } from "@/components/notifications/notification-centre";
+import { NotificationPreferencesPanel } from "@/components/notifications/notification-preferences-panel";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/shared/section-card";
 import { useLocalStorage } from "@/hooks/use-local-storage";
@@ -128,35 +130,8 @@ export function ClientBillingPage() {
 }
 
 export function ClientNotificationsPage() {
-  const { user } = useRequiredAuth();
-  const { portalNotifications, markNotificationRead } = useWorkspaceStore();
-  const notes = portalNotifications.filter(
-    (n) => n.portal === "client" && n.userId === user.id
-  );
-
   return (
-    <div className="flex flex-col gap-5">
-      <PageHeader title="Notifications" description="Client portal alerts." />
-      <SectionCard title="Inbox" bodyClassName="p-0">
-        <ul className="divide-y divide-border">
-          {notes.map((n) => (
-            <li key={n.id} className="flex items-start justify-between gap-3 px-5 py-3">
-              <div>
-                <p className="text-sm font-medium">{n.title}</p>
-                <p className="text-xs text-muted-foreground">{n.body}</p>
-              </div>
-              {!n.read ? (
-                <Button size="sm" variant="outline" onClick={() => markNotificationRead(n.id)}>
-                  Mark read
-                </Button>
-              ) : (
-                <span className="text-[11px] text-muted-foreground">Read</span>
-              )}
-            </li>
-          ))}
-        </ul>
-      </SectionCard>
-    </div>
+    <NotificationCentre portal="client" settingsHref="/client/settings" />
   );
 }
 
@@ -171,7 +146,7 @@ export function ClientSettingsPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Settings"
-        description="Client account preferences (demo)."
+        description="Profile and notification delivery preferences."
       />
       <SectionCard title="Profile">
         <div className="flex max-w-md flex-col gap-3">
@@ -186,15 +161,14 @@ export function ClientSettingsPage() {
             className="w-fit"
             onClick={() => {
               setDisplayName(displayName.trim() || user.name);
-              toast.success("Preferences saved locally", {
-                description: "Display name preference stored in this browser.",
-              });
+              toast.success("Display name saved for this browser");
             }}
           >
-            Save changes
+            Save display name
           </Button>
         </div>
       </SectionCard>
+      <NotificationPreferencesPanel />
     </div>
   );
 }

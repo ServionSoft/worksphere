@@ -16,9 +16,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MessagingInbox } from "@/components/messaging/messaging-inbox";
+import { NotificationCentre } from "@/components/notifications/notification-centre";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/shared/section-card";
-import { useLocalStorage } from "@/hooks/use-local-storage";
 import { getApiDeveloper } from "@/lib/api/workspace-api";
 import { onboard } from "@/lib/api/auth";
 import { useAuth, useRequiredAuth } from "@/lib/auth-store";
@@ -578,70 +578,15 @@ export function DeveloperMessagesPage() {
 }
 
 export function DeveloperNotificationsPage() {
-  const { user } = useRequiredAuth();
-  const { portalNotifications, markNotificationRead } = useWorkspaceStore();
-  const notes = portalNotifications.filter(
-    (n) => n.portal === "developer" && n.userId === user.id
-  );
-
   return (
-    <div className="flex flex-col gap-5">
-      <PageHeader title="Notifications" />
-      <SectionCard title="Inbox" bodyClassName="p-0">
-        <ul className="divide-y divide-border">
-          {notes.map((n) => (
-            <li key={n.id} className="flex justify-between gap-3 px-5 py-3">
-              <div>
-                <p className="text-sm font-medium">{n.title}</p>
-                <p className="text-xs text-muted-foreground">{n.body}</p>
-              </div>
-              {!n.read ? (
-                <Button size="sm" variant="outline" onClick={() => markNotificationRead(n.id)}>
-                  Mark read
-                </Button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      </SectionCard>
-    </div>
+    <NotificationCentre
+      portal="developer"
+      settingsHref="/developer/settings"
+    />
   );
 }
 
-export function DeveloperSettingsPage() {
-  const { user } = useRequiredAuth();
-  const [displayName, setDisplayName] = useLocalStorage(
-    "worksphere.developer.displayName",
-    user.name
-  );
-
-  return (
-    <div className="flex flex-col gap-5">
-      <PageHeader title="Settings" description="Developer account preferences (demo)." />
-      <SectionCard title="Account">
-        <div className="flex max-w-md flex-col gap-3">
-          <label className="text-xs font-medium">Display name preference</label>
-          <Input
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-          />
-          <p className="text-sm text-muted-foreground">{user.email}</p>
-          <Button
-            className="w-fit"
-            onClick={() => {
-              setDisplayName(displayName.trim() || user.name);
-              toast.success("Settings saved locally", {
-                description: "Display name preference stored in this browser.",
-              });
-            }}
-          >
-            Save
-          </Button>
-        </div>
-      </SectionCard>
-    </div>
-  );
-}
+export { DeveloperSettingsPage } from "@/components/developer/developer-settings";
 
 function Field({
   label,

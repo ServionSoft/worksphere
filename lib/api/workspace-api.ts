@@ -270,6 +270,9 @@ export function createApiProject(workspaceId: string, project: Project) {
     body: JSON.stringify({
       name: project.name,
       description: project.description,
+      objectives: project.objectives,
+      scopeText: project.scopeText,
+      scopeDocumentId: project.scopeDocumentId,
       clientId: project.clientId,
       managerProfileId: project.managerId || undefined,
       status: project.status,
@@ -297,6 +300,9 @@ export function patchApiProject(
       body: JSON.stringify({
         name: patch.name,
         description: patch.description,
+        objectives: patch.objectives,
+        scopeText: patch.scopeText,
+        scopeDocumentId: patch.scopeDocumentId,
         clientId: patch.clientId,
         managerProfileId: patch.managerId,
         status: patch.status,
@@ -442,10 +448,19 @@ export function createApiMilestone(workspaceId: string, milestone: Milestone) {
       projectId: milestone.projectId,
       title: milestone.title,
       description: milestone.description,
+      publicDescription: milestone.publicDescription,
       dueDate: milestone.dueDate || undefined,
       status: milestone.status,
       progress: milestone.progress,
       deliverables: milestone.deliverables,
+      acceptanceCriteria: milestone.acceptanceCriteria,
+      requiredSkills: milestone.requiredSkills,
+      estimatedDays: milestone.estimatedDays ?? undefined,
+      clientPrice: milestone.clientPrice,
+      developerBudget: milestone.developerBudget,
+      currency: milestone.currency,
+      planStatus: milestone.planStatus,
+      source: milestone.source,
     }),
   });
 }
@@ -460,8 +475,136 @@ export function patchApiMilestone(
     {
       method: "PATCH",
       workspaceId,
-      body: JSON.stringify(patch),
+      body: JSON.stringify({
+        ...patch,
+        publicDescription: patch.publicDescription,
+        acceptanceCriteria: patch.acceptanceCriteria,
+        requiredSkills: patch.requiredSkills,
+        estimatedDays: patch.estimatedDays,
+        clientPrice: patch.clientPrice,
+        developerBudget: patch.developerBudget,
+        planStatus: patch.planStatus,
+        sortOrder: patch.sortOrder,
+      }),
     }
+  );
+}
+
+export function approveApiMilestone(workspaceId: string, milestoneId: string) {
+  return apiFetch<Milestone>(
+    `/api/workspaces/${workspaceId}/milestones/${milestoneId}/approve`,
+    { method: "POST", workspaceId, body: "{}" }
+  );
+}
+
+export function previewPublishApiMilestone(
+  workspaceId: string,
+  milestoneId: string
+) {
+  return apiFetch<Record<string, unknown>>(
+    `/api/workspaces/${workspaceId}/milestones/${milestoneId}/publish-preview`,
+    { workspaceId }
+  );
+}
+
+export function publishApiMilestone(
+  workspaceId: string,
+  milestoneId: string,
+  body?: Record<string, unknown>
+) {
+  return apiFetch<{
+    milestone: Milestone;
+    opportunityId: string;
+    preview: Record<string, unknown>;
+    marginPreview?: Record<string, unknown>;
+  }>(`/api/workspaces/${workspaceId}/milestones/${milestoneId}/publish`, {
+    method: "POST",
+    workspaceId,
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
+export function generateApiMilestones(
+  workspaceId: string,
+  projectId: string,
+  opts?: { scopeText?: string; persist?: boolean }
+) {
+  return apiFetch<{
+    provider: string;
+    suggestions: unknown[];
+    milestones: Milestone[];
+  }>("/api/ai/milestones/generate", {
+    method: "POST",
+    body: JSON.stringify({
+      workspaceId,
+      projectId,
+      persist: opts?.persist !== false,
+      scopeText: opts?.scopeText,
+    }),
+  });
+}
+
+export function fetchAiStatus() {
+  return apiFetch<{
+    milestoneGeneration: "available" | "unavailable";
+    provider: string | null;
+  }>("/api/ai/status");
+}
+
+export function fetchMilestoneProfitability(
+  workspaceId: string,
+  query?: Record<string, string | undefined>
+) {
+  const params = new URLSearchParams();
+  if (query) {
+    for (const [k, v] of Object.entries(query)) {
+      if (v) params.set(k, v);
+    }
+  }
+  const qs = params.toString();
+  return apiFetch<{
+    totals: Record<string, number | null>;
+    milestones: Array<Record<string, unknown>>;
+    note: string;
+  }>(
+    `/api/workspaces/${workspaceId}/finance/profitability${qs ? `?${qs}` : ""}`,
+    { workspaceId }
+  );
+}
+
+export function createApiDeveloperReview(
+  workspaceId: string,
+  body: {
+    milestoneId: string;
+    overallRating: number;
+    communication: number;
+    workQuality: number;
+    timeliness: number;
+    professionalism: number;
+    feedback?: string;
+  }
+) {
+  return apiFetch<Record<string, unknown>>(
+    `/api/workspaces/${workspaceId}/reviews`,
+    {
+      method: "POST",
+      workspaceId,
+      body: JSON.stringify(body),
+    }
+  );
+}
+
+export function fetchApiDeveloperReviews(
+  workspaceId: string,
+  query?: { milestoneId?: string; developerId?: string }
+) {
+  const params = new URLSearchParams();
+  if (query?.milestoneId) params.set("milestoneId", query.milestoneId);
+  if (query?.developerId) params.set("developerId", query.developerId);
+  const qs = params.toString();
+  return apiFetch<Array<Record<string, unknown>>>(
+    `/api/workspaces/${workspaceId}/reviews${qs ? `?${qs}` : ""}`,
+    { workspaceId }
   );
 }
 
@@ -908,12 +1051,70 @@ export function createApiComment(
   });
 }
 
+export type NotificationsListResponse = {
+  items: PortalNotification[];
+  total: number;
+  unreadCount: number;
+  limit: number;
+  offset: number;
+};
+
+export function listApiNotifications(
+  workspaceId: string,
+  query?: {
+    status?: "all" | "unread" | "read";
+    category?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }
+) {
+  const params = new URLSearchParams();
+  if (query?.status && query.status !== "all") params.set("status", query.status);
+  if (query?.category) params.set("category", query.category);
+  if (query?.q) params.set("q", query.q);
+  if (query?.limit) params.set("limit", String(query.limit));
+  if (query?.offset) params.set("offset", String(query.offset));
+  const qs = params.toString();
+  return apiFetch<NotificationsListResponse>(
+    `/api/workspaces/${workspaceId}/notifications${qs ? `?${qs}` : ""}`,
+    { workspaceId }
+  );
+}
+
 export function markApiNotificationRead(
   workspaceId: string,
   notificationId: string
 ) {
-  return apiFetch<PortalNotification>(
+  return apiFetch<{ id: string; read: boolean }>(
     `/api/workspaces/${workspaceId}/notifications/${notificationId}/read`,
+    { method: "POST", workspaceId }
+  );
+}
+
+export function markApiNotificationUnread(
+  workspaceId: string,
+  notificationId: string
+) {
+  return apiFetch<{ id: string; read: boolean }>(
+    `/api/workspaces/${workspaceId}/notifications/${notificationId}/unread`,
+    { method: "POST", workspaceId }
+  );
+}
+
+export function markApiAllNotificationsRead(workspaceId: string) {
+  return apiFetch<{ updated: number }>(
+    `/api/workspaces/${workspaceId}/notifications/read-all`,
+    { method: "POST", workspaceId }
+  );
+}
+
+export function dismissApiNotification(
+  workspaceId: string,
+  notificationId: string
+) {
+  return apiFetch<{ id: string; dismissed: boolean }>(
+    `/api/workspaces/${workspaceId}/notifications/${notificationId}/dismiss`,
     { method: "POST", workspaceId }
   );
 }

@@ -11,6 +11,8 @@ export interface AuthMeResponse {
     developerProfileId: string | null;
     clientIds: string[];
     title?: string | null;
+    avatarUrl?: string | null;
+    createdAt?: string | null;
   };
   memberships: Array<{
     workspaceId: string;
@@ -106,8 +108,71 @@ export function bootstrapProfile(body: {
   });
 }
 
-export function patchMe(body: { fullName?: string; title?: string; avatarUrl?: string }) {
+export function patchMe(body: {
+  fullName?: string;
+  title?: string | null;
+  avatarUrl?: string | null;
+}) {
   return apiFetch<AuthMeResponse["profile"]>("/api/auth/me", {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export type NotificationCategoryPreferences = {
+  projects: boolean;
+  milestones: boolean;
+  marketplaceOpportunities: boolean;
+  bidUpdates: boolean;
+  assignments: boolean;
+  taskUpdates: boolean;
+  submissionFeedback: boolean;
+  revisionRequests: boolean;
+  approvals: boolean;
+  messages: boolean;
+  earnings: boolean;
+  finance: boolean;
+  account: boolean;
+  securityAlerts: boolean;
+};
+
+export type NotificationPreferences = NotificationCategoryPreferences & {
+  channels: { inApp: boolean; email: boolean };
+  email: NotificationCategoryPreferences;
+};
+
+export type ApplicationPreferences = {
+  theme: "system" | "light" | "dark";
+  timezone: string;
+  dateFormat: "ymd" | "mdy" | "dmy";
+  timeFormat: "12h" | "24h";
+};
+
+export type ProfilePreferences = {
+  notifications: NotificationPreferences;
+  application: ApplicationPreferences;
+  deactivationRequestedAt: string | null;
+  deletionRequestedAt: string | null;
+  emailDelivery?: {
+    configured: boolean;
+    provider: string;
+    missingEnv: string[];
+  };
+};
+
+export function fetchPreferences() {
+  return apiFetch<ProfilePreferences>("/api/auth/preferences");
+}
+
+export function patchPreferences(body: {
+  notifications?: Partial<NotificationPreferences>;
+  application?: Partial<ApplicationPreferences>;
+  requestDeactivation?: boolean;
+  requestDeletion?: boolean;
+  clearDeactivationRequest?: boolean;
+  clearDeletionRequest?: boolean;
+}) {
+  return apiFetch<ProfilePreferences>("/api/auth/preferences", {
     method: "PATCH",
     body: JSON.stringify(body),
   });

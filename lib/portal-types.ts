@@ -119,6 +119,8 @@ export interface MarketplaceOpportunity {
   workspaceId?: string;
   projectId?: string;
   projectName?: string;
+  milestoneId?: string;
+  isMilestoneOpportunity?: boolean;
   publishedBy: string;
   publishedAt: string;
   attachments: string[];
@@ -316,6 +318,11 @@ export interface PortalNotification {
   createdAt: string;
   read: boolean;
   href?: string;
+  category?: string;
+  eventType?: string;
+  entityType?: string;
+  entityId?: string;
+  emailStatus?: string;
 }
 
 export interface SavedOpportunity {

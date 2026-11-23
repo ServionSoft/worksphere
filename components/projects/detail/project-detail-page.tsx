@@ -19,9 +19,11 @@ import { ProjectKanban } from "@/components/projects/detail/project-kanban";
 import { ProjectTaskTable } from "@/components/projects/detail/project-task-table";
 import { ProjectGantt } from "@/components/projects/detail/project-gantt";
 import { ProjectMilestones } from "@/components/projects/detail/project-milestones";
+import { ProjectScopeTab } from "@/components/projects/detail/project-scope-tab";
 import { ProjectDocuments } from "@/components/projects/detail/project-documents";
 import { ProjectApprovals } from "@/components/projects/detail/project-approvals";
 import { ProjectActivity } from "@/components/projects/detail/project-activity";
+import { MilestoneFinancePanel } from "@/components/projects/detail/milestone-finance-panel";
 import {
   DeleteProjectDialog,
   canDeleteProjects,
@@ -201,10 +203,12 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
       >
         <TabsList variant="line" className="w-full justify-start overflow-x-auto">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="scope">Scope</TabsTrigger>
           <TabsTrigger value="board">Board</TabsTrigger>
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="milestones">Milestones</TabsTrigger>
+          <TabsTrigger value="finance">Finance</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="approvals">Approvals</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
@@ -217,6 +221,9 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
             milestones={projectMilestones}
           />
         </TabsContent>
+        <TabsContent value="scope" className="mt-4">
+          <ProjectScopeTab project={project} />
+        </TabsContent>
         <TabsContent value="board" className="mt-4">
           <ProjectKanban projectId={project.id} />
         </TabsContent>
@@ -228,6 +235,9 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
         </TabsContent>
         <TabsContent value="milestones" className="mt-4">
           <ProjectMilestones projectId={project.id} />
+        </TabsContent>
+        <TabsContent value="finance" className="mt-4">
+          <MilestoneFinancePanel projectId={project.id} />
         </TabsContent>
         <TabsContent value="documents" className="mt-4">
           <ProjectDocuments projectId={project.id} />

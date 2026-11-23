@@ -1,15 +1,24 @@
 "use client";
 
-import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  CheckCircle2,
+  Loader2,
+  Pencil,
+  Plus,
+  Sparkles,
+  Store,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -28,10 +37,16 @@ import {
   milestoneLabels,
 } from "@/components/shared/milestone-badge";
 import { DEMO_NOW_ISO, demoId } from "@/lib/demo-clock";
-import { formatDate } from "@/lib/format";
+import { formatCurrency, formatDate } from "@/lib/format";
+import {
+  approveApiMilestone,
+  fetchAiStatus,
+  generateApiMilestones,
+  publishApiMilestone,
+} from "@/lib/api/workspace-api";
+import { isApiDataSource } from "@/lib/data-source";
 import { useWorkspaceStore } from "@/lib/workspace-store";
-import { TaskStatusBadge } from "@/components/shared/status-badge";
-import type { Milestone, MilestoneStatus, Task } from "@/lib/types";
+import type { Milestone, MilestoneStatus } from "@/lib/types";
 import { toast } from "sonner";
 
 const statuses: MilestoneStatus[] = [
@@ -48,179 +63,611 @@ interface ProjectMilestonesProps {
 interface MilestoneFormState {
   title: string;
   description: string;
+  publicDescription: string;
   dueDate: string;
   status: MilestoneStatus;
   deliverables: string;
+  acceptanceCriteria: string;
+  requiredSkills: string;
+  estimatedDays: string;
+  clientPrice: string;
+  developerBudget: string;
   progress: string;
 }
 
 const emptyForm: MilestoneFormState = {
   title: "",
   description: "",
+  publicDescription: "",
   dueDate: DEMO_NOW_ISO.slice(0, 10),
   status: "upcoming",
   deliverables: "",
+  acceptanceCriteria: "",
+  requiredSkills: "",
+  estimatedDays: "7",
+  clientPrice: "0",
+  developerBudget: "0",
   progress: "0",
 };
+
+function marginPreview(clientPrice: number, developerCost: number) {
+  const margin = Math.round((clientPrice - developerCost) * 100) / 100;
+  const pct =
+    clientPrice > 0
+      ? Math.round((margin / clientPrice) * 10000) / 100
+      : null;
+  return { margin, pct };
+}
 
 export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
   const {
     milestones,
     tasks,
+    projects,
+    workspace,
+    quotations,
+    opportunities,
     addMilestone,
     updateMilestone,
-    updateMilestoneStatus,
-    authorizeTaskForClient,
-    updateTaskStatus,
     deleteMilestone,
+    setWorkspaceId,
   } = useWorkspaceStore();
-  const items = milestones.filter((m) => m.projectId === projectId);
+
+  function reload() {
+    if (workspace?.id) setWorkspaceId(workspace.id);
+  }
+  const project = projects.find((p) => p.id === projectId);
+  const items = useMemo(
+    () =>
+      milestones
+        .filter((m) => m.projectId === projectId)
+        .slice()
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+    [milestones, projectId]
+  );
   const projectTasks = tasks.filter(
     (t) => t.projectId === projectId && !t.parentId
   );
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Milestone | null>(null);
   const [form, setForm] = useState<MilestoneFormState>(emptyForm);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [publishBusy, setPublishBusy] = useState(false);
+
+  const selected = items.find((m) => m.id === selectedId) ?? items[0] ?? null;
 
   function openCreate() {
-    setEditingId(null);
+    setEditing(null);
     setForm(emptyForm);
-    setDialogOpen(true);
+    setOpen(true);
   }
 
-  function openEdit(milestone: Milestone) {
-    setEditingId(milestone.id);
+  function openEdit(m: Milestone) {
+    setEditing(m);
     setForm({
-      title: milestone.title,
-      description: milestone.description,
-      dueDate: milestone.dueDate.slice(0, 10),
-      status: milestone.status,
-      deliverables: milestone.deliverables.join("\n"),
-      progress: String(milestone.progress),
+      title: m.title,
+      description: m.description,
+      publicDescription: m.publicDescription ?? "",
+      dueDate: m.dueDate?.slice(0, 10) || DEMO_NOW_ISO.slice(0, 10),
+      status: m.status,
+      deliverables: m.deliverables.join("\n"),
+      acceptanceCriteria: m.acceptanceCriteria ?? "",
+      requiredSkills: (m.requiredSkills ?? []).join(", "),
+      estimatedDays: String(m.estimatedDays ?? 7),
+      clientPrice: String(m.clientPrice ?? 0),
+      developerBudget: String(m.developerBudget ?? 0),
+      progress: String(m.progress),
     });
-    setDialogOpen(true);
+    setOpen(true);
   }
 
-  function saveMilestone() {
+  function saveForm() {
     if (!form.title.trim()) {
       toast.error("Title is required");
       return;
     }
-    const deliverables = form.deliverables
-      .split("\n")
-      .map((d) => d.trim())
-      .filter(Boolean);
-    const progress = Math.min(100, Math.max(0, Number(form.progress) || 0));
-
-    if (editingId) {
-      updateMilestone(editingId, {
-        title: form.title.trim(),
-        description: form.description.trim(),
-        dueDate: form.dueDate,
-        status: form.status,
-        deliverables,
-        progress: form.status === "completed" ? 100 : progress,
-      });
+    const clientPrice = Number(form.clientPrice) || 0;
+    const developerBudget = Number(form.developerBudget) || 0;
+    const payload: Milestone = {
+      id: editing?.id ?? demoId("ms"),
+      projectId,
+      title: form.title.trim(),
+      description: form.description,
+      publicDescription: form.publicDescription,
+      dueDate: form.dueDate,
+      status: form.status,
+      deliverables: form.deliverables
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      acceptanceCriteria: form.acceptanceCriteria,
+      requiredSkills: form.requiredSkills
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      estimatedDays: Number(form.estimatedDays) || 7,
+      clientPrice,
+      developerBudget,
+      progress: Number(form.progress) || 0,
+      planStatus: editing?.planStatus ?? "approved",
+      source: editing?.source ?? "manual",
+      commercialStatus:
+        clientPrice > 0 || developerBudget > 0 ? "priced" : "unpriced",
+      marketplaceStatus: editing?.marketplaceStatus ?? "not_published",
+    };
+    if (editing) {
+      updateMilestone(editing.id, payload);
       toast.success("Milestone updated");
     } else {
-      addMilestone({
-        id: demoId("m"),
-        projectId,
-        title: form.title.trim(),
-        description: form.description.trim(),
-        dueDate: form.dueDate,
-        status: form.status,
-        deliverables,
-        progress: form.status === "completed" ? 100 : progress,
-      });
-      toast.success("Milestone added");
+      addMilestone(payload);
+      toast.success("Milestone created");
     }
-    setDialogOpen(false);
+    setOpen(false);
   }
 
+  async function onApprove(m: Milestone) {
+    if (!isApiDataSource() || !workspace?.id) {
+      updateMilestone(m.id, { planStatus: "approved" });
+      toast.success("Milestone approved (local)");
+      return;
+    }
+    setBusy(true);
+    try {
+      const remote = await approveApiMilestone(workspace.id, m.id);
+      updateMilestone(m.id, remote);
+      toast.success("Milestone approved for production");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Approve failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onPublish(m: Milestone) {
+    if (!workspace?.id) return;
+    if (m.planStatus !== "approved") {
+      toast.error("Approve the milestone before publishing");
+      return;
+    }
+    if (!isApiDataSource()) {
+      toast.message("Publishing requires API mode");
+      return;
+    }
+    setPublishBusy(true);
+    try {
+      const result = await publishApiMilestone(workspace.id, m.id, {
+        publicDescription: m.publicDescription || m.description,
+      });
+      updateMilestone(m.id, result.milestone);
+      reload();
+      toast.success("Published to marketplace", {
+        description: `Opportunity ${result.opportunityId.slice(0, 8)}…`,
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Publish failed");
+    } finally {
+      setPublishBusy(false);
+    }
+  }
+
+  async function onGenerateAi() {
+    if (!workspace?.id) return;
+    setAiBusy(true);
+    try {
+      const status = await fetchAiStatus();
+      if (status.milestoneGeneration !== "available") {
+        toast.error("AI unavailable", {
+          description:
+            "Configure OPENAI_API_KEY on the API server, or create milestones manually.",
+        });
+        return;
+      }
+      const result = await generateApiMilestones(workspace.id, projectId, {
+        scopeText: project?.scopeText,
+      });
+      reload();
+      toast.success(
+        `${result.milestones?.length ?? result.suggestions.length} suggested milestones ready for review`
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "AI generation failed");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  const selectedBids = useMemo(() => {
+    if (!selected?.opportunityId) return [];
+    return quotations.filter((q) => q.opportunityId === selected.opportunityId);
+  }, [quotations, selected?.opportunityId]);
+
+  const clientPrice = Number(selected?.clientPrice ?? 0);
+  const developerBudget = Number(selected?.developerBudget ?? 0);
+  const awarded = selected?.awardedDeveloperCost;
+  const cost = awarded != null ? awarded : developerBudget;
+  const { margin, pct } = marginPreview(clientPrice, cost);
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex justify-end">
-        <Button size="sm" onClick={openCreate}>
-          <Plus data-icon="inline-start" />
-          Add milestone
-        </Button>
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+      <SectionCard
+        title="Milestones"
+        description="Independent production + commercial units. Approve before publishing."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={aiBusy}
+              onClick={() => void onGenerateAi()}
+            >
+              {aiBusy ? (
+                <Loader2 className="animate-spin" data-icon="inline-start" />
+              ) : (
+                <Sparkles data-icon="inline-start" />
+              )}
+              Generate from scope
+            </Button>
+            <Button size="sm" onClick={openCreate}>
+              <Plus data-icon="inline-start" />
+              Add
+            </Button>
+          </div>
+        }
+        bodyClassName="p-0"
+      >
+        {items.length === 0 ? (
+          <p className="px-5 py-10 text-center text-sm text-muted-foreground">
+            No milestones yet. Paste scope on the Scope tab, generate with AI when
+            configured, or add manually.
+          </p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {items.map((m) => {
+              const linkedTasks = projectTasks.filter(
+                (t) => t.milestoneId === m.id
+              );
+              const active = selected?.id === m.id;
+              return (
+                <li key={m.id}>
+                  <button
+                    type="button"
+                    className={`flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors sm:px-5 ${
+                      active ? "bg-muted/50" : "hover:bg-muted/30"
+                    }`}
+                    onClick={() => setSelectedId(m.id)}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold">{m.title}</p>
+                        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                          {m.description || "No description"}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        <MilestoneStatusBadge status={m.status} />
+                        <Badge variant="secondary">
+                          {(m.planStatus ?? "approved").replace(/_/g, " ")}
+                        </Badge>
+                        <Badge variant="outline">
+                          {(m.marketplaceStatus ?? "not_published").replace(
+                            /_/g,
+                            " "
+                          )}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                      <span>
+                        Client{" "}
+                        {formatCurrency(m.clientPrice ?? 0, m.currency ?? "USD")}
+                      </span>
+                      <span>
+                        Dev budget{" "}
+                        {formatCurrency(
+                          m.developerBudget ?? 0,
+                          m.currency ?? "USD"
+                        )}
+                      </span>
+                      <span>
+                        {linkedTasks.length} task
+                        {linkedTasks.length === 1 ? "" : "s"}
+                      </span>
+                      {m.dueDate ? (
+                        <span>Due {formatDate(m.dueDate)}</span>
+                      ) : null}
+                    </div>
+                    <Progress value={m.progress} className="h-1.5" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </SectionCard>
+
+      <div className="space-y-4">
+        {!selected ? (
+          <SectionCard title="Milestone detail">
+            <p className="text-sm text-muted-foreground">
+              Select a milestone to manage pricing, marketplace, and bids.
+            </p>
+          </SectionCard>
+        ) : (
+          <>
+            <SectionCard
+              title={selected.title}
+              description={`${milestoneLabels[selected.status]} · ${selected.commercialStatus ?? "unpriced"} · ${selected.marketplaceStatus ?? "not_published"}`}
+              action={
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => openEdit(selected)}
+                  >
+                    <Pencil data-icon="inline-start" />
+                    Edit
+                  </Button>
+                  {selected.planStatus === "suggested" ? (
+                    <Button
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => void onApprove(selected)}
+                    >
+                      <CheckCircle2 data-icon="inline-start" />
+                      Approve
+                    </Button>
+                  ) : null}
+                  {selected.planStatus === "approved" &&
+                  selected.marketplaceStatus !== "published" &&
+                  selected.marketplaceStatus !== "filled" ? (
+                    <Button
+                      size="sm"
+                      disabled={publishBusy}
+                      onClick={() => void onPublish(selected)}
+                    >
+                      <Store data-icon="inline-start" />
+                      {publishBusy ? "Publishing…" : "Publish"}
+                    </Button>
+                  ) : null}
+                  {selected.opportunityId ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      render={
+                        <Link
+                          href={`/marketplace?tab=bids&opportunityId=${selected.opportunityId}`}
+                        />
+                      }
+                      nativeButton={false}
+                    >
+                      Open bids
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      deleteMilestone(selected.id);
+                      toast.success("Milestone removed");
+                    }}
+                  >
+                    <Trash2 data-icon="inline-start" />
+                  </Button>
+                </div>
+              }
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-border px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Client price</p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {formatCurrency(clientPrice, selected.currency ?? "USD")}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">
+                    Developer budget (original)
+                  </p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {formatCurrency(
+                      developerBudget,
+                      selected.currency ?? "USD"
+                    )}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">
+                    Awarded developer cost
+                  </p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {awarded != null
+                      ? formatCurrency(awarded, selected.currency ?? "USD")
+                      : "—"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Gross margin</p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {formatCurrency(margin, selected.currency ?? "USD")}
+                    {pct != null ? ` (${pct}%)` : ""}
+                  </p>
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Original budget is never overwritten by award. Awarded cost is set
+                only when a bid is accepted.
+              </p>
+              {selected.acceptanceCriteria ? (
+                <div className="mt-4">
+                  <p className="text-xs font-medium">Acceptance criteria</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                    {selected.acceptanceCriteria}
+                  </p>
+                </div>
+              ) : null}
+              {(selected.requiredSkills?.length ?? 0) > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {selected.requiredSkills!.map((s) => (
+                    <Badge key={s} variant="secondary">
+                      {s}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
+            </SectionCard>
+
+            <SectionCard
+              title="Bids"
+              description={
+                selected.opportunityId
+                  ? "Proposals for this milestone opportunity"
+                  : "Publish to marketplace to collect bids"
+              }
+              bodyClassName="p-0"
+            >
+              {selectedBids.length === 0 ? (
+                <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+                  No bids yet.
+                </p>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {selectedBids.map((q) => (
+                    <li
+                      key={q.id}
+                      className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-5"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">{q.developerName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatCurrency(q.price)} · {q.estimatedDays} days ·{" "}
+                          {q.status}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        render={
+                          <Link
+                            href={`/marketplace?tab=bids&opportunityId=${q.opportunityId}`}
+                          />
+                        }
+                        nativeButton={false}
+                      >
+                        Compare
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Linked opportunity">
+              {selected.opportunityId ? (
+                <p className="text-sm">
+                  {opportunities.find((o) => o.id === selected.opportunityId)
+                    ?.title ?? "Opportunity"}{" "}
+                  <span className="text-muted-foreground">
+                    ({selected.opportunityId.slice(0, 8)}…)
+                  </span>
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">Not published.</p>
+              )}
+            </SectionCard>
+          </>
+        )}
       </div>
 
-      {items.map((milestone) => (
-        <MilestoneCard
-          key={milestone.id}
-          milestone={milestone}
-          linkedTasks={projectTasks.filter(
-            (t) => t.milestoneId === milestone.id
-          )}
-          onApproveTask={(taskId) => {
-            authorizeTaskForClient(taskId);
-            toast.success("Sent to client", {
-              description: "Client must approve before this task shows as Done",
-            });
-          }}
-          onRequestRevision={(taskId) => {
-            updateTaskStatus(taskId, "in_progress");
-            toast.success("Revision requested", {
-              description: "Task returned to the assignee",
-            });
-          }}
-          onStatusChange={(status) => {
-            updateMilestoneStatus(milestone.id, status);
-            toast.success("Milestone updated", {
-              description: `${milestone.title} → ${milestoneLabels[status]}`,
-            });
-          }}
-          onEdit={() => openEdit(milestone)}
-          onDelete={() => {
-            deleteMilestone(milestone.id);
-            toast.success("Milestone deleted", {
-              description: milestone.title,
-            });
-          }}
-        />
-      ))}
-
-      {items.length === 0 ? (
-        <SectionCard title="Milestones" description="No milestones for this project">
-          <p className="text-sm text-muted-foreground">
-            Add the first milestone to start tracking delivery checkpoints.
-          </p>
-        </SectionCard>
-      ) : null}
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {editingId ? "Edit milestone" : "Add milestone"}
+              {editing ? "Edit milestone" : "New milestone"}
             </DialogTitle>
             <DialogDescription>
-              Track delivery checkpoints for this project.
+              Set production details and independent client / developer amounts.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-3">
+          <div className="grid gap-3">
             <div>
               <label className="text-xs font-medium">Title</label>
               <Input
                 className="mt-1"
                 value={form.title}
                 onChange={(e) =>
-                  setForm((p) => ({ ...p, title: e.target.value }))
+                  setForm((f) => ({ ...f, title: e.target.value }))
                 }
               />
             </div>
             <div>
-              <label className="text-xs font-medium">Description</label>
+              <label className="text-xs font-medium">Internal description</label>
               <Textarea
                 className="mt-1"
+                rows={3}
                 value={form.description}
                 onChange={(e) =>
-                  setForm((p) => ({ ...p, description: e.target.value }))
+                  setForm((f) => ({ ...f, description: e.target.value }))
                 }
               />
             </div>
+            <div>
+              <label className="text-xs font-medium">
+                Public marketplace description
+              </label>
+              <Textarea
+                className="mt-1"
+                rows={3}
+                value={form.publicDescription}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    publicDescription: e.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-xs font-medium">Client price</label>
+                <Input
+                  className="mt-1"
+                  type="number"
+                  min={0}
+                  value={form.clientPrice}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, clientPrice: e.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium">Developer budget</label>
+                <Input
+                  className="mt-1"
+                  type="number"
+                  min={0}
+                  value={form.developerBudget}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      developerBudget: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+            {(() => {
+              const cp = Number(form.clientPrice) || 0;
+              const db = Number(form.developerBudget) || 0;
+              const m = marginPreview(cp, db);
+              return (
+                <p className="text-xs text-muted-foreground">
+                  Estimated margin: {formatCurrency(m.margin)}
+                  {m.pct != null ? ` (${m.pct}%)` : " — set client price to compute %"}
+                </p>
+              );
+            })()}
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <label className="text-xs font-medium">Due date</label>
@@ -229,20 +676,19 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
                   type="date"
                   value={form.dueDate}
                   onChange={(e) =>
-                    setForm((p) => ({ ...p, dueDate: e.target.value }))
+                    setForm((f) => ({ ...f, dueDate: e.target.value }))
                   }
                 />
               </div>
               <div>
-                <label className="text-xs font-medium">Progress %</label>
+                <label className="text-xs font-medium">Estimated days</label>
                 <Input
                   className="mt-1"
                   type="number"
-                  min={0}
-                  max={100}
-                  value={form.progress}
+                  min={1}
+                  value={form.estimatedDays}
                   onChange={(e) =>
-                    setForm((p) => ({ ...p, progress: e.target.value }))
+                    setForm((f) => ({ ...f, estimatedDays: e.target.value }))
                   }
                 />
               </div>
@@ -253,20 +699,18 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
                 value={form.status}
                 onValueChange={(v) =>
                   typeof v === "string" &&
-                  setForm((p) => ({ ...p, status: v as MilestoneStatus }))
+                  setForm((f) => ({ ...f, status: v as MilestoneStatus }))
                 }
               >
                 <SelectTrigger className="mt-1 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectGroup>
-                    {statuses.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {milestoneLabels[s]}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
+                  {statuses.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {milestoneLabels[s]}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -276,214 +720,48 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
               </label>
               <Textarea
                 className="mt-1"
+                rows={3}
                 value={form.deliverables}
                 onChange={(e) =>
-                  setForm((p) => ({ ...p, deliverables: e.target.value }))
+                  setForm((f) => ({ ...f, deliverables: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium">Acceptance criteria</label>
+              <Textarea
+                className="mt-1"
+                rows={2}
+                value={form.acceptanceCriteria}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    acceptanceCriteria: e.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium">
+                Required skills (comma-separated)
+              </label>
+              <Input
+                className="mt-1"
+                value={form.requiredSkills}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, requiredSkills: e.target.value }))
                 }
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={saveMilestone}>
-              {editingId ? "Save changes" : "Create milestone"}
-            </Button>
+            <Button onClick={saveForm}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-function MilestoneCard({
-  milestone,
-  linkedTasks,
-  onApproveTask,
-  onRequestRevision,
-  onStatusChange,
-  onEdit,
-  onDelete,
-}: {
-  milestone: Milestone;
-  linkedTasks: Task[];
-  onApproveTask: (taskId: string) => void;
-  onRequestRevision: (taskId: string) => void;
-  onStatusChange: (status: MilestoneStatus) => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const awaitingAdmin = linkedTasks.filter(
-    (t) =>
-      t.status === "review" &&
-      !(t.authorizedForClient && t.clientApprovalStatus === "pending") &&
-      t.clientApprovalStatus !== "approved"
-  );
-  const awaitingClient = linkedTasks.filter(
-    (t) => t.authorizedForClient && t.clientApprovalStatus === "pending"
-  );
-  const allDone =
-    linkedTasks.length > 0 &&
-    linkedTasks.every(
-      (t) =>
-        t.status === "done" &&
-        (t.requiresClientApproval === false ||
-          t.clientApprovalStatus === "approved")
-    );
-
-  return (
-    <SectionCard
-      title={milestone.title}
-      description={`Due ${formatDate(milestone.dueDate)}`}
-      action={
-        <div className="flex items-center gap-1.5">
-          <MilestoneStatusBadge status={milestone.status} />
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            onClick={onEdit}
-            aria-label="Edit milestone"
-          >
-            <Pencil />
-          </Button>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            onClick={onDelete}
-            aria-label="Delete milestone"
-          >
-            <Trash2 />
-          </Button>
-        </div>
-      }
-    >
-      <p className="text-sm text-muted-foreground">{milestone.description}</p>
-
-      <div className="mt-4">
-        <div className="mb-1.5 flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Progress</span>
-          <span className="font-medium tabular-nums">{milestone.progress}%</span>
-        </div>
-        <Progress value={milestone.progress} />
-      </div>
-
-      <div className="mt-4">
-        <p className="mb-2 text-xs font-medium text-foreground">
-          Milestone tasks
-        </p>
-        {linkedTasks.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No tasks linked. Assign tasks to this milestone from the task board.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-1.5">
-            {linkedTasks.map((task) => (
-              <li
-                key={task.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">{task.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {task.assigneeName}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <TaskStatusBadge status={task.status} />
-                  {task.authorizedForClient &&
-                  task.clientApprovalStatus === "pending" ? (
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-800">
-                      Awaiting client
-                    </span>
-                  ) : null}
-                  {task.status === "review" &&
-                  task.clientApprovalStatus !== "approved" &&
-                  !(
-                    task.authorizedForClient &&
-                    task.clientApprovalStatus === "pending"
-                  ) ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      <Button
-                        size="xs"
-                        onClick={() => onApproveTask(task.id)}
-                      >
-                        Approve for client
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="destructive"
-                        onClick={() => onRequestRevision(task.id)}
-                      >
-                        Request revision
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-        {awaitingAdmin.length > 0 ? (
-          <p className="mt-2 text-xs font-medium text-amber-800">
-            {awaitingAdmin.length} task
-            {awaitingAdmin.length === 1 ? "" : "s"} awaiting your approval
-          </p>
-        ) : null}
-        {awaitingClient.length > 0 ? (
-          <p className="mt-2 text-xs font-medium text-amber-800">
-            {awaitingClient.length} task
-            {awaitingClient.length === 1 ? "" : "s"} with client for sign-off
-          </p>
-        ) : null}
-        {allDone && milestone.status !== "completed" ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            All tasks client-approved — mark milestone Completed when ready.
-          </p>
-        ) : null}
-      </div>
-
-      <div className="mt-4">
-        <p className="mb-2 text-xs font-medium text-foreground">Deliverables</p>
-        <ul className="flex flex-col gap-1.5">
-          {milestone.deliverables.map((item) => (
-            <li
-              key={item}
-              className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm"
-            >
-              {item}
-            </li>
-          ))}
-          {milestone.deliverables.length === 0 ? (
-            <li className="text-sm text-muted-foreground">No deliverables listed.</li>
-          ) : null}
-        </ul>
-      </div>
-
-      <div className="mt-4 flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">Milestone status</span>
-        <Select
-          value={milestone.status}
-          onValueChange={(v) => v && onStatusChange(v as MilestoneStatus)}
-        >
-          <SelectTrigger size="sm" className="min-w-32">
-            <SelectValue>
-              {(v) =>
-                v ? milestoneLabels[v as MilestoneStatus] : "Status"
-              }
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {statuses.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {milestoneLabels[s]}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </div>
-    </SectionCard>
   );
 }

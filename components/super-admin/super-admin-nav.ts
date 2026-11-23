@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
+  Bell,
   Building2,
   CreditCard,
   LayoutDashboard,
@@ -33,6 +34,11 @@ export const superAdminNav: SuperAdminNavItem[] = [
     icon: Store,
   },
   { title: "Revenue", href: "/super-admin/revenue", icon: LineChart },
+  {
+    title: "Notifications",
+    href: "/super-admin/notifications",
+    icon: Bell,
+  },
   {
     title: "Activity & Security",
     href: "/super-admin/activity",

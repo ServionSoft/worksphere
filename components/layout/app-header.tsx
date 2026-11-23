@@ -198,7 +198,7 @@ export function AppHeader({ onOpenMobileNav, onQuickCreate }: AppHeaderProps) {
                 } else if (portal === "developer") {
                   router.push("/developer/notifications");
                 } else {
-                  router.push("/approvals");
+                  router.push("/notifications");
                 }
               }}
             >

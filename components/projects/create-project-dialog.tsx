@@ -38,9 +38,12 @@ export function CreateProjectDialog({
   const { addProject, clients, team, workspace } = useWorkspaceStore();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [objectives, setObjectives] = useState("");
+  const [scopeText, setScopeText] = useState("");
   const [clientId, setClientId] = useState("");
   const [managerId, setManagerId] = useState("");
   const [budget, setBudget] = useState("50000");
+  const [currency, setCurrency] = useState("USD");
 
   const resolvedClientId = clientId || clients[0]?.id || "";
   const resolvedManagerId = managerId || team[0]?.id || "";
@@ -52,6 +55,8 @@ export function CreateProjectDialog({
   function reset() {
     setName("");
     setDescription("");
+    setObjectives("");
+    setScopeText("");
     setClientId("");
     setManagerId("");
     setPriority("medium");
@@ -59,6 +64,7 @@ export function CreateProjectDialog({
     setStartDate(localDateInputValue());
     setDueDate("");
     setBudget("50000");
+    setCurrency("USD");
   }
 
   function handleOpenChange(next: boolean) {
@@ -90,6 +96,8 @@ export function CreateProjectDialog({
       workspaceId: workspace.id,
       name: name.trim(),
       description: description.trim() || "Newly created project",
+      objectives: objectives.trim(),
+      scopeText: scopeText.trim(),
       clientId: client.id,
       clientName: client.name,
       managerId: manager.id,
@@ -102,7 +110,7 @@ export function CreateProjectDialog({
       teamSize: 1,
       budget: Number(budget) || 50000,
       spent: 0,
-      currency: "USD",
+      currency: currency.trim().toUpperCase() || "USD",
     });
 
     toast.success("Project created", { description: name.trim() });
@@ -143,6 +151,32 @@ export function CreateProjectDialog({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What is this project delivering?"
               className="min-h-20"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-foreground" htmlFor="project-objectives">
+              Objectives
+            </label>
+            <Textarea
+              id="project-objectives"
+              value={objectives}
+              onChange={(e) => setObjectives(e.target.value)}
+              placeholder="Client success criteria"
+              className="min-h-16"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-foreground" htmlFor="project-scope">
+              Scope of work (paste)
+            </label>
+            <Textarea
+              id="project-scope"
+              value={scopeText}
+              onChange={(e) => setScopeText(e.target.value)}
+              placeholder="Paste scope text now, or add later on the Scope tab. Upload PDF/DOCX via Documents."
+              className="min-h-24"
             />
           </div>
 
@@ -285,7 +319,7 @@ export function CreateProjectDialog({
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-foreground" htmlFor="budget">
-                Budget (USD)
+                Client contract value
               </label>
               <Input
                 id="budget"

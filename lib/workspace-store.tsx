@@ -42,6 +42,8 @@ import {
   listApiThreads,
   listApiWorkspaces,
   loadWorkspaceBootstrap,
+  listApiNotifications,
+  markApiAllNotificationsRead,
   markApiEarningPaid,
   markApiNotificationRead,
   markApiThreadRead,
@@ -406,6 +408,8 @@ interface WorkspaceStoreValue {
   ) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: (portal: PortalNotification["portal"], userId: string) => void;
+  refreshNotifications: () => Promise<void>;
+  mergeNotifications: (items: PortalNotification[]) => void;
   addInvoice: (invoice: Invoice) => void;
   updateInvoice: (id: string, patch: Partial<Invoice>) => void;
   markEarningPaid: (id: string) => void;
@@ -2970,6 +2974,29 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const mergeNotifications = useCallback((items: PortalNotification[]) => {
+    setPortalNotifications((prev) => {
+      const byId = new Map(prev.map((n) => [n.id, n]));
+      for (const item of items) byId.set(item.id, item);
+      return Array.from(byId.values()).sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    });
+  }, []);
+
+  const refreshNotifications = useCallback(async () => {
+    if (!apiMode || !workspaceIdRef.current) return;
+    try {
+      const data = await listApiNotifications(workspaceIdRef.current, {
+        limit: 100,
+      });
+      mergeNotifications(data.items);
+    } catch {
+      /* polling soft-fail */
+    }
+  }, [apiMode, mergeNotifications]);
+
   const markAllNotificationsRead = useCallback(
     (portal: PortalNotification["portal"], userId: string) => {
       const scopedWorkspace = workspaceIdRef.current;
@@ -2983,20 +3010,13 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         )
       );
       if (apiMode) {
-        portalNotifications
-          .filter(
-            (n) =>
-              n.portal === portal &&
-              n.userId === userId &&
-              (n.workspaceId || "ws1") === scopedWorkspace &&
-              !n.read
-          )
-          .forEach((n) => {
-            runApi(() => markApiNotificationRead(scopedWorkspace, n.id));
-          });
+        runApi(
+          () => markApiAllNotificationsRead(scopedWorkspace),
+          "Mark all notifications read"
+        );
       }
     },
-    [apiMode, portalNotifications]
+    [apiMode]
   );
 
   const addInvoice = useCallback((invoice: Invoice) => {
@@ -3223,6 +3243,8 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       setDeveloperStatus,
       markNotificationRead,
       markAllNotificationsRead,
+      refreshNotifications,
+      mergeNotifications,
       addInvoice,
       updateInvoice,
       markEarningPaid,
@@ -3314,6 +3336,8 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       setDeveloperStatus,
       markNotificationRead,
       markAllNotificationsRead,
+      refreshNotifications,
+      mergeNotifications,
       addInvoice,
       updateInvoice,
       markEarningPaid,

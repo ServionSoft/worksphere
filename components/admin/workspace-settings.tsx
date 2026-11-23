@@ -29,17 +29,10 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProductionTemplatesPanel } from "@/components/admin/production-templates-panel";
+import { NotificationPreferencesPanel } from "@/components/notifications/notification-preferences-panel";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useRequiredAuth } from "@/lib/auth-store";
 import { useWorkspaceStore } from "@/lib/workspace-store";
-
-const DEFAULT_NOTIFS = {
-  emailDigest: true,
-  taskAssigned: true,
-  approvals: true,
-  marketplace: false,
-  weeklyReport: true,
-};
 
 const ROLE_MATRIX_SEED = [
   {
@@ -89,10 +82,6 @@ export function WorkspaceSettings() {
   const { workspace, workspaces, setWorkspaceId, resetDemoData } =
     useWorkspaceStore();
   const { theme, setTheme } = useTheme();
-  const [notifs, setNotifs] = useLocalStorage(
-    "worksphere.settings.notifications",
-    DEFAULT_NOTIFS
-  );
   const [twoFa, setTwoFa] = useLocalStorage(
     "worksphere.settings.demo2fa",
     false
@@ -218,38 +207,7 @@ export function WorkspaceSettings() {
         </TabsContent>
 
         <TabsContent value="notifications" className="mt-4">
-          <SectionCard
-            title="Notification preferences"
-            description="Stored in localStorage for this browser"
-          >
-            <ul className="flex flex-col gap-3">
-              {(
-                [
-                  ["emailDigest", "Email digest"],
-                  ["taskAssigned", "Task assigned"],
-                  ["approvals", "Approval requests"],
-                  ["marketplace", "Marketplace activity"],
-                  ["weeklyReport", "Weekly report"],
-                ] as const
-              ).map(([key, label]) => (
-                <label
-                  key={key}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5 text-sm"
-                >
-                  <span>{label}</span>
-                  <Checkbox
-                    checked={notifs[key]}
-                    onCheckedChange={(checked) =>
-                      setNotifs((prev) => ({
-                        ...prev,
-                        [key]: Boolean(checked),
-                      }))
-                    }
-                  />
-                </label>
-              ))}
-            </ul>
-          </SectionCard>
+          <NotificationPreferencesPanel />
         </TabsContent>
 
         <TabsContent value="roles" className="mt-4">
