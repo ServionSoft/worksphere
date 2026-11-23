@@ -37,6 +37,7 @@ import {
   deleteApiOpportunity,
   deleteApiProject,
   deleteApiTask,
+  getApiDeveloper,
   listApiThreadMessages,
   listApiThreads,
   listApiWorkspaces,
@@ -677,10 +678,20 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
             setInvoices([]);
             setEarnings([]);
             setPortalNotifications([]);
-            setDevelopers([]);
             setSaved([]);
             setClients([]);
             setTeam([]);
+            // Pending developers may have no workspace yet — still load own profile.
+            if (user?.developerId) {
+              try {
+                const self = await getApiDeveloper(user.developerId);
+                if (!cancelled) setDevelopers([self]);
+              } catch {
+                if (!cancelled) setDevelopers([]);
+              }
+            } else if (!cancelled) {
+              setDevelopers([]);
+            }
             setHydrated(true);
             return;
           }
@@ -689,6 +700,22 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
             directory[0].id;
           await reloadBootstrap(preferred, directory);
           if (cancelled) return;
+          // Ensure signed-in developer always sees their own profile card.
+          if (user?.developerId) {
+            setDevelopers((prev) => {
+              if (prev.some((d) => d.id === user.developerId)) return prev;
+              void getApiDeveloper(user.developerId!).then((self) => {
+                if (!cancelled) {
+                  setDevelopers((current) =>
+                    current.some((d) => d.id === self.id)
+                      ? current
+                      : [self, ...current]
+                  );
+                }
+              });
+              return prev;
+            });
+          }
         } catch {
           /* auth/profile may still be provisioning — keep empty, never demo seed */
           if (!cancelled) {
@@ -779,7 +806,15 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [apiMode, authHydrated, isAuthenticated, reloadBootstrap, seed, user?.id]);
+  }, [
+    apiMode,
+    authHydrated,
+    isAuthenticated,
+    reloadBootstrap,
+    seed,
+    user?.id,
+    user?.developerId,
+  ]);
 
   useEffect(() => {
     if (apiMode || !hydrated || skipPersist.current) return;
@@ -2826,6 +2861,11 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       patch: Partial<DeveloperProfile> & { requestReview?: boolean }
     ) => {
       const { requestReview, ...profilePatch } = patch;
+      // Strip local-only fields that the API does not accept.
+      const { cvMeta: _cvMeta, ...apiPatch } = profilePatch as Partial<DeveloperProfile> & {
+        cvMeta?: DeveloperProfile["cvMeta"];
+      };
+      void _cvMeta;
       setDevelopers((prev) =>
         prev.map((d) =>
           d.id === id
@@ -2843,14 +2883,22 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
             : d
         )
       );
-      runApi(
-        () =>
-          patchApiDeveloper(id, {
-            ...profilePatch,
-            ...(requestReview ? { requestReview: true } : {}),
-          }),
-        "Update developer"
-      );
+      runApi(async () => {
+        const remote = await patchApiDeveloper(id, {
+          ...apiPatch,
+          ...(requestReview ? { requestReview: true } : {}),
+        });
+        setDevelopers((prev) =>
+          prev.map((d) =>
+            d.id === id
+              ? {
+                  ...remote,
+                  cvMeta: profilePatch.cvMeta ?? d.cvMeta,
+                }
+              : d
+          )
+        );
+      }, "Update developer");
     },
     []
   );

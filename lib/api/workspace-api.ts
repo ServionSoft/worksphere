@@ -955,6 +955,10 @@ export function registerApiDeveloper(profile: DeveloperProfile) {
   });
 }
 
+export function getApiDeveloper(developerId: string) {
+  return apiFetch<DeveloperProfile>(`/api/developers/${developerId}`);
+}
+
 export function patchApiDeveloper(
   developerId: string,
   patch: Partial<DeveloperProfile> & { requestReview?: boolean }

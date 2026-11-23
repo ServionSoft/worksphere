@@ -1,17 +1,28 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { MessagingInbox } from "@/components/messaging/messaging-inbox";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/shared/section-card";
 import { useLocalStorage } from "@/hooks/use-local-storage";
-import { useRequiredAuth } from "@/lib/auth-store";
+import { getApiDeveloper } from "@/lib/api/workspace-api";
+import { onboard } from "@/lib/api/auth";
+import { useAuth, useRequiredAuth } from "@/lib/auth-store";
+import { isApiDataSource } from "@/lib/data-source";
 import { DEMO_TS, demoId } from "@/lib/demo-clock";
 import { formatCurrency, formatDate, formatShortDate } from "@/lib/format";
 import { useWorkspaceStore } from "@/lib/workspace-store";
@@ -258,30 +269,153 @@ export function DeveloperEarningsPage() {
 
 export function DeveloperProfilePage() {
   const { user } = useRequiredAuth();
-  const { developers, updateDeveloperProfile } = useWorkspaceStore();
-  const profile = developers.find((d) => d.id === user.developerId);
-  const [form, setForm] = useState<Partial<DeveloperProfile>>(profile ?? {});
+  const { refreshMe } = useAuth();
+  const {
+    developers,
+    updateDeveloperProfile,
+    hydrated,
+  } = useWorkspaceStore();
+  // Keep a fallback copy when workspace bootstrap has not loaded developers yet.
+  const [localProfile, setLocalProfile] = useState<DeveloperProfile | null>(
+    null
+  );
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [skillsText, setSkillsText] = useState("");
+  const profile =
+    developers.find((d) => d.id === user.developerId) ?? localProfile;
+  const [form, setForm] = useState<Partial<DeveloperProfile>>({});
+
+  useEffect(() => {
+    if (!profile) return;
+    setForm(profile);
+    setSkillsText(profile.skills.join(", "));
+  }, [profile?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function ensureProfile() {
+      if (!isApiDataSource() || !hydrated) return;
+      if (user.developerId && developers.some((d) => d.id === user.developerId)) {
+        return;
+      }
+      if (localProfile) return;
+
+      setLoading(true);
+      try {
+        let developerId = user.developerId;
+        if (!developerId) {
+          await onboard({ kind: "developer", developer: {} });
+          await refreshMe();
+          const { fetchMe } = await import("@/lib/api/auth");
+          const me = await fetchMe();
+          developerId = me.profile.developerProfileId ?? undefined;
+        }
+        if (!developerId) {
+          if (!cancelled) setLocalProfile(null);
+          return;
+        }
+        const self = await getApiDeveloper(developerId);
+        if (!cancelled) {
+          setLocalProfile(self);
+          setForm(self);
+          setSkillsText(self.skills.join(", "));
+        }
+      } catch {
+        if (!cancelled) setLocalProfile(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void ensureProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, developers, localProfile, user.developerId, refreshMe]);
+
+  if (loading || (!hydrated && isApiDataSource())) {
+    return (
+      <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border px-6 py-16 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" />
+        Loading your profile…
+      </div>
+    );
+  }
 
   if (!profile) {
     return (
       <div className="rounded-xl border border-dashed border-border px-6 py-16 text-center">
         <p className="font-semibold">No developer profile</p>
         <p className="mt-2 text-sm text-muted-foreground">
-          Finish account setup from registration, or contact support if this persists after sign-in.
+          Your account is signed in, but a developer profile was not created yet.
+          Complete registration or try again after email verification.
         </p>
-        <Button className="mt-4" render={<Link href="/developer/register" />} nativeButton={false}>
+        <Button
+          className="mt-4"
+          render={<Link href="/developer/register" />}
+          nativeButton={false}
+        >
           Start registration
         </Button>
       </div>
     );
   }
 
+  function saveProfile(extra?: { requestReview?: boolean }) {
+    if (!profile) return;
+    const skills = skillsText
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!form.title?.trim()) {
+      toast.error("Professional title is required");
+      return;
+    }
+    setSaving(true);
+    updateDeveloperProfile(profile.id, {
+      ...form,
+      title: form.title.trim(),
+      skills,
+      phone: form.phone ?? "",
+      country: form.country ?? "",
+      bio: form.bio ?? "",
+      experienceYears: Number(form.experienceYears) || 0,
+      hourlyRate: Number(form.hourlyRate) || 0,
+      portfolioUrl: form.portfolioUrl?.trim() || "",
+      githubUrl: form.githubUrl?.trim() || "",
+      linkedinUrl: form.linkedinUrl?.trim() || "",
+      ...extra,
+    });
+    setLocalProfile((prev) =>
+      prev
+        ? {
+            ...prev,
+            ...form,
+            skills,
+            title: form.title!.trim(),
+          }
+        : prev
+    );
+    toast.success(
+      extra?.requestReview ? "Re-review requested" : "Profile saved"
+    );
+    window.setTimeout(() => setSaving(false), 600);
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title="My Profile"
-        description={`Status: ${profile.status.replace(/_/g, " ")}`}
+        description={`Status: ${profile.status.replace(/_/g, " ")} · Edit and save your professional details anytime.`}
       />
+      {profile.status === "pending_verification" ? (
+        <SectionCard title="Verification pending">
+          <p className="text-sm text-muted-foreground">
+            Your profile is waiting for admin review. You can keep updating your
+            information — admins will see the latest details.
+          </p>
+        </SectionCard>
+      ) : null}
       {profile.status === "rejected" ? (
         <SectionCard title="Verification feedback">
           <p className="text-sm text-muted-foreground">
@@ -291,21 +425,20 @@ export function DeveloperProfilePage() {
           <Button
             className="mt-3"
             size="sm"
-            onClick={() => {
-              updateDeveloperProfile(profile.id, {
-                ...form,
-                requestReview: true,
-              });
-              toast.success("Re-review requested");
-            }}
+            disabled={saving}
+            onClick={() => saveProfile({ requestReview: true })}
           >
             Request re-review
           </Button>
         </SectionCard>
       ) : null}
       <div className="grid gap-4 xl:grid-cols-3">
-        <SectionCard title="Performance" className="xl:col-span-1">
-          <p className="text-sm">Rating: <strong>{profile.rating}</strong></p>
+        <SectionCard title="Overview" className="xl:col-span-1">
+          <p className="text-sm font-medium">{profile.name}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{profile.email}</p>
+          <p className="mt-3 text-sm">
+            Rating: <strong>{profile.rating}</strong>
+          </p>
           <p className="mt-2 text-sm">
             On-time: <strong>{profile.onTimePercent}%</strong>
           </p>
@@ -326,14 +459,14 @@ export function DeveloperProfilePage() {
         <SectionCard title="Edit profile" className="xl:col-span-2">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field
-              label="Title"
+              label="Professional title"
               value={form.title ?? ""}
               onChange={(v) => setForm((p) => ({ ...p, title: v }))}
             />
             <Field
-              label="Hourly rate"
-              value={String(form.hourlyRate ?? "")}
-              onChange={(v) => setForm((p) => ({ ...p, hourlyRate: Number(v) || 0 }))}
+              label="Phone"
+              value={form.phone ?? ""}
+              onChange={(v) => setForm((p) => ({ ...p, phone: v }))}
             />
             <Field
               label="Country"
@@ -341,9 +474,69 @@ export function DeveloperProfilePage() {
               onChange={(v) => setForm((p) => ({ ...p, country: v }))}
             />
             <Field
+              label="Years of experience"
+              value={String(form.experienceYears ?? "")}
+              onChange={(v) =>
+                setForm((p) => ({
+                  ...p,
+                  experienceYears: Number(v) || 0,
+                }))
+              }
+            />
+            <Field
+              label="Hourly rate (USD)"
+              value={String(form.hourlyRate ?? "")}
+              onChange={(v) =>
+                setForm((p) => ({ ...p, hourlyRate: Number(v) || 0 }))
+              }
+            />
+            <div>
+              <label className="text-xs font-medium">Availability</label>
+              <Select
+                value={form.availability ?? "available"}
+                onValueChange={(v) =>
+                  typeof v === "string" &&
+                  setForm((p) => ({
+                    ...p,
+                    availability: v as DeveloperProfile["availability"],
+                  }))
+                }
+              >
+                <SelectTrigger className="mt-1 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="available">Available</SelectItem>
+                  <SelectItem value="limited">Limited</SelectItem>
+                  <SelectItem value="unavailable">Unavailable</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Field
               label="Portfolio URL"
               value={form.portfolioUrl ?? ""}
               onChange={(v) => setForm((p) => ({ ...p, portfolioUrl: v }))}
+            />
+            <Field
+              label="GitHub URL"
+              value={form.githubUrl ?? ""}
+              onChange={(v) => setForm((p) => ({ ...p, githubUrl: v }))}
+            />
+            <Field
+              label="LinkedIn URL"
+              value={form.linkedinUrl ?? ""}
+              onChange={(v) => setForm((p) => ({ ...p, linkedinUrl: v }))}
+            />
+          </div>
+          <div className="mt-3">
+            <label className="text-xs font-medium">
+              Skills (comma-separated)
+            </label>
+            <Input
+              className="mt-1"
+              value={skillsText}
+              onChange={(e) => setSkillsText(e.target.value)}
+              placeholder="React, TypeScript, Node.js"
             />
           </div>
           <div className="mt-3">
@@ -355,17 +548,24 @@ export function DeveloperProfilePage() {
           <label className="mt-3 block text-xs font-medium">Bio</label>
           <Textarea
             className="mt-1"
+            rows={5}
             value={form.bio ?? ""}
             onChange={(e) => setForm((p) => ({ ...p, bio: e.target.value }))}
+            placeholder="Tell admins about your stack and experience"
           />
           <Button
-            className="mt-3"
-            onClick={() => {
-              updateDeveloperProfile(profile.id, form);
-              toast.success("Profile updated locally");
-            }}
+            className="mt-4"
+            disabled={saving}
+            onClick={() => saveProfile()}
           >
-            Save profile
+            {saving ? (
+              <>
+                <Loader2 className="animate-spin" data-icon="inline-start" />
+                Saving…
+              </>
+            ) : (
+              "Save profile"
+            )}
           </Button>
         </SectionCard>
       </div>
