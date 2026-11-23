@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,14 +23,23 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import { toast } from "sonner";
 
-export function OpportunityDetailPage({ opportunityId }: { opportunityId: string }) {
+type BidStep = 1 | 2 | 3;
+
+export function OpportunityDetailPage({
+  opportunityId,
+}: {
+  opportunityId: string;
+}) {
   const { user } = useRequiredAuth();
   const {
     workspaceId,
     opportunities,
     assignments,
+    quotations,
     acceptFixedOpportunity,
     submitQuotation,
+    updateQuotationStatus,
+    patchQuotation,
     saveOpportunity,
     developers,
     team,
@@ -42,22 +51,40 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
     (a) =>
       a.opportunityId === opportunityId && a.developerId === user.developerId
   );
+  const myBid = useMemo(
+    () =>
+      quotations.find(
+        (q) =>
+          q.opportunityId === opportunityId &&
+          q.developerId === user.developerId &&
+          q.status !== "withdrawn"
+      ),
+    [quotations, opportunityId, user.developerId]
+  );
   const pendingConfirmation = myAssignment?.status === "pending_confirmation";
   const workUnlocked =
-    myAssignment != null &&
-    myAssignment.status !== "pending_confirmation";
+    myAssignment != null && myAssignment.status !== "pending_confirmation";
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [acceptOpen, setAcceptOpen] = useState(false);
+  const [step, setStep] = useState<BidStep>(1);
   const [price, setPrice] = useState("");
   const [days, setDays] = useState("");
   const [cover, setCover] = useState("");
+  const [understanding, setUnderstanding] = useState("");
+  const [approach, setApproach] = useState("");
+  const [experience, setExperience] = useState("");
+  const [portfolio, setPortfolio] = useState("");
   const [question, setQuestion] = useState("");
 
   if (!opp) {
     return (
       <div className="rounded-xl border border-dashed border-border px-6 py-20 text-center">
         <p className="font-semibold">Opportunity not found</p>
-        <Button className="mt-4" render={<Link href="/developer/marketplace" />} nativeButton={false}>
+        <Button
+          className="mt-4"
+          render={<Link href="/developer/marketplace" />}
+          nativeButton={false}
+        >
           Back to marketplace
         </Button>
       </div>
@@ -65,7 +92,96 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
   }
 
   const verified = profile?.status === "verified";
-  const canApply = verified && opp.status === "open" && !myAssignment;
+  const deadlinePassed =
+    !Number.isNaN(new Date(opp.deadline).getTime()) &&
+    new Date(opp.deadline).getTime() < Date.now();
+  const canApply =
+    verified &&
+    opp.status === "open" &&
+    !myAssignment &&
+    !myBid &&
+    !deadlinePassed &&
+    opp.pricing === "quotation";
+  const canAcceptFixed =
+    verified &&
+    opp.status === "open" &&
+    !myAssignment &&
+    !deadlinePassed &&
+    opp.pricing === "fixed";
+  const canEditBid =
+    myBid &&
+    ["pending", "shortlisted"].includes(myBid.status) &&
+    opp.status === "open";
+
+  function openBidForm(existing?: typeof myBid) {
+    setStep(1);
+    setPrice(existing ? String(existing.price) : String(opp?.budgetMin ?? ""));
+    setDays(
+      existing ? String(existing.estimatedDays) : String(opp?.estimatedDays ?? "")
+    );
+    setCover(existing?.coverMessage ?? "");
+    setUnderstanding(existing?.understanding ?? "");
+    setApproach(existing?.approach ?? "");
+    setExperience(existing?.relevantExperience ?? "");
+    setPortfolio((existing?.portfolioLinks ?? []).join("\n"));
+    setQuoteOpen(true);
+  }
+
+  function validateStep(current: BidStep) {
+    if (current === 1) {
+      if (!price || !days || !cover.trim()) {
+        toast.error("Price, timeline, and cover letter are required");
+        return false;
+      }
+      const p = Number(price);
+      if (
+        opp &&
+        opp.pricing === "quotation" &&
+        (p < opp.budgetMin || p > opp.budgetMax)
+      ) {
+        toast.error(
+          `Proposed price must be between ${formatCurrency(opp.budgetMin)} and ${formatCurrency(opp.budgetMax)}`
+        );
+        return false;
+      }
+    }
+    if (current === 2 && !understanding.trim()) {
+      toast.error("Describe your understanding of the requirements");
+      return false;
+    }
+    return true;
+  }
+
+  function submitBid() {
+    if (!opp) return;
+    if (!validateStep(1) || !validateStep(2)) return;
+    const portfolioLinks = portfolio
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const commercial = {
+      price: Number(price),
+      estimatedDays: Number(days),
+      coverMessage: cover.trim(),
+      understanding: understanding.trim(),
+      approach: approach.trim(),
+      relevantExperience: experience.trim(),
+      portfolioLinks,
+    };
+    if (myBid && canEditBid) {
+      patchQuotation(myBid.id, commercial);
+      toast.success("Bid updated");
+    } else {
+      submitQuotation({
+        opportunityId: opp.id,
+        developerId: user.developerId ?? "dev1",
+        developerName: user.name,
+        ...commercial,
+      });
+      toast.success("Bid submitted");
+    }
+    setQuoteOpen(false);
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -73,7 +189,7 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <p className="font-semibold">Waiting for admin confirmation</p>
           <p className="mt-1 text-amber-800">
-            Your acceptance is recorded. Work stays locked until an administrator
+            Your award is recorded. Work stays locked until an administrator
             confirms the assignment.
           </p>
         </div>
@@ -96,6 +212,56 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
         </div>
       ) : null}
 
+      {myBid ? (
+        <div className="rounded-xl border border-border bg-card px-4 py-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="font-medium">Your bid</p>
+              <p className="mt-1 text-muted-foreground">
+                {formatCurrency(myBid.price)} · {myBid.estimatedDays} days ·{" "}
+                <span className="capitalize">{myBid.status}</span>
+              </p>
+              {myBid.rejectionReason ? (
+                <p className="mt-1 text-destructive">
+                  Feedback: {myBid.rejectionReason}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {canEditBid ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => openBidForm(myBid)}
+                  >
+                    Edit bid
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => {
+                      updateQuotationStatus(myBid.id, "withdrawn");
+                      toast.success("Bid withdrawn");
+                    }}
+                  >
+                    Withdraw
+                  </Button>
+                </>
+              ) : null}
+              <Button
+                size="sm"
+                variant="outline"
+                render={<Link href="/developer/marketplace?tab=bids" />}
+                nativeButton={false}
+              >
+                My Bids
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="rounded-xl border border-border bg-card px-5 py-5">
         <Button
           variant="ghost"
@@ -109,7 +275,8 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
         </Button>
         <h1 className="text-xl font-semibold tracking-tight">{opp.title}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {opp.projectName ?? "Independent task"} · Published by {opp.publishedBy}
+          {opp.projectName ?? "Independent task"} · Published by{" "}
+          {opp.publishedBy}
         </p>
         <div className="mt-3 flex flex-wrap gap-1.5">
           {opp.skills.map((s) => (
@@ -122,7 +289,7 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
           {opp.pricing === "fixed" ? (
             <Button
               size="sm"
-              disabled={!canApply}
+              disabled={!canAcceptFixed}
               onClick={() => setAcceptOpen(true)}
             >
               Accept fixed-price offer
@@ -131,9 +298,9 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
             <Button
               size="sm"
               disabled={!canApply}
-              onClick={() => setQuoteOpen(true)}
+              onClick={() => openBidForm()}
             >
-              Submit quotation
+              Submit bid
             </Button>
           )}
           <Button
@@ -148,12 +315,17 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
           </Button>
           {!verified ? (
             <p className="text-xs text-amber-700">
-              Verification required for restricted assignments.
+              Verification required before you can submit a bid.
             </p>
           ) : null}
-          {pendingConfirmation ? (
-            <p className="w-full text-xs text-amber-700">
-              Work submission unlocks after admin confirmation (not_started+).
+          {deadlinePassed ? (
+            <p className="text-xs text-amber-700">
+              Bid submission deadline has passed.
+            </p>
+          ) : null}
+          {opp.status !== "open" ? (
+            <p className="text-xs text-muted-foreground capitalize">
+              Opportunity is {opp.status}.
             </p>
           ) : null}
         </div>
@@ -161,7 +333,9 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
 
       <div className="grid gap-4 xl:grid-cols-3">
         <SectionCard title="Description" className="xl:col-span-2">
-          <p className="text-sm leading-6 text-muted-foreground">{opp.description}</p>
+          <p className="text-sm leading-6 text-muted-foreground">
+            {opp.description}
+          </p>
           <h3 className="mt-4 text-sm font-semibold">Scope</h3>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
             {opp.scope.map((item) => (
@@ -189,9 +363,20 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
               value={`${formatCurrency(opp.budgetMin)} – ${formatCurrency(opp.budgetMax)}`}
             />
             <Info label="Pricing" value={opp.pricing} />
-            <Info label="Estimated duration" value={`${opp.estimatedDays} days`} />
-            <Info label="Deadline" value={formatDate(opp.deadline)} />
+            <Info
+              label="Estimated duration"
+              value={`${opp.estimatedDays} days`}
+            />
+            <Info label="Bid deadline" value={formatDate(opp.deadline)} />
             <Info label="Experience" value={opp.experienceLevel} />
+            <Info
+              label="Eligibility"
+              value={
+                verified
+                  ? "Verified — eligible to bid"
+                  : "Verification required"
+              }
+            />
           </SectionCard>
           <SectionCard title="Ask a question">
             <Textarea
@@ -254,7 +439,8 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
             >
               Send question
             </Button>
-          </SectionCard>        </div>
+          </SectionCard>
+        </div>
       </div>
 
       <Dialog open={acceptOpen} onOpenChange={setAcceptOpen}>
@@ -263,8 +449,8 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
             <DialogTitle>Confirm fixed-price acceptance</DialogTitle>
             <DialogDescription>
               Confirm scope, price {formatCurrency(opp.budgetMax)} and deadline{" "}
-              {formatDate(opp.deadline)}. Admin must confirm the assignment before
-              work can begin.
+              {formatDate(opp.deadline)}. Admin must confirm the assignment
+              before work can begin.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -291,57 +477,146 @@ export function OpportunityDetailPage({ opportunityId }: { opportunityId: string
         </DialogContent>
       </Dialog>
 
-      <Dialog open={quoteOpen} onOpenChange={setQuoteOpen}>
-        <DialogContent>
+      <Dialog
+        open={quoteOpen}
+        onOpenChange={(v) => {
+          setQuoteOpen(v);
+          if (!v) setStep(1);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Submit quotation</DialogTitle>
+            <DialogTitle>
+              {myBid && canEditBid ? "Edit bid" : "Submit bid"} · Step {step} of
+              3
+            </DialogTitle>
             <DialogDescription>
-              Propose price, timeline and a short cover message.
+              Budget range {formatCurrency(opp.budgetMin)}–
+              {formatCurrency(opp.budgetMax)} · Deadline{" "}
+              {formatDate(opp.deadline)}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <Input
-              type="number"
-              placeholder="Proposed price (USD)"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-            />
-            <Input
-              type="number"
-              placeholder="Estimated days"
-              value={days}
-              onChange={(e) => setDays(e.target.value)}
-            />
-            <Textarea
-              placeholder="Cover message / relevant experience"
-              value={cover}
-              onChange={(e) => setCover(e.target.value)}
-            />
-          </div>
-          <DialogFooter>
+
+          {step === 1 ? (
+            <div className="flex flex-col gap-3">
+              <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                Opportunity: {opp.title} · {opp.experienceLevel} ·{" "}
+                {opp.estimatedDays} days expected
+              </div>
+              <Input
+                type="number"
+                placeholder="Proposed price (USD)"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+              />
+              <Input
+                type="number"
+                placeholder="Proposed delivery days"
+                value={days}
+                onChange={(e) => setDays(e.target.value)}
+              />
+              <Textarea
+                placeholder="Cover letter / proposal"
+                value={cover}
+                onChange={(e) => setCover(e.target.value)}
+                rows={5}
+              />
+            </div>
+          ) : null}
+
+          {step === 2 ? (
+            <div className="flex flex-col gap-3">
+              <Textarea
+                placeholder="Understanding of the project requirements"
+                value={understanding}
+                onChange={(e) => setUnderstanding(e.target.value)}
+                rows={4}
+              />
+              <Textarea
+                placeholder="Proposed approach"
+                value={approach}
+                onChange={(e) => setApproach(e.target.value)}
+                rows={4}
+              />
+              <Textarea
+                placeholder="Relevant experience"
+                value={experience}
+                onChange={(e) => setExperience(e.target.value)}
+                rows={3}
+              />
+              <Textarea
+                placeholder="Portfolio links (one per line)"
+                value={portfolio}
+                onChange={(e) => setPortfolio(e.target.value)}
+                rows={3}
+              />
+            </div>
+          ) : null}
+
+          {step === 3 ? (
+            <div className="space-y-3 text-sm">
+              <p className="font-medium">Review your bid</p>
+              <p>
+                Price: {formatCurrency(Number(price) || 0)} · Timeline: {days}{" "}
+                days
+              </p>
+              <div>
+                <p className="text-xs text-muted-foreground">Cover letter</p>
+                <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                  {cover}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Understanding</p>
+                <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                  {understanding}
+                </p>
+              </div>
+              {approach ? (
+                <div>
+                  <p className="text-xs text-muted-foreground">Approach</p>
+                  <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                    {approach}
+                  </p>
+                </div>
+              ) : null}
+              {experience ? (
+                <div>
+                  <p className="text-xs text-muted-foreground">Experience</p>
+                  <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                    {experience}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <DialogFooter className="flex-wrap gap-2">
             <Button variant="outline" onClick={() => setQuoteOpen(false)}>
               Cancel
             </Button>
-            <Button
-              onClick={() => {
-                if (!price || !days || !cover.trim()) {
-                  toast.error("Complete all quotation fields");
-                  return;
-                }
-                submitQuotation({
-                  opportunityId: opp.id,
-                  developerId: user.developerId ?? "dev1",
-                  developerName: user.name,
-                  price: Number(price),
-                  estimatedDays: Number(days),
-                  coverMessage: cover.trim(),
-                });
-                setQuoteOpen(false);
-                toast.success("Quotation submitted");
-              }}
-            >
-              Submit quotation
-            </Button>
+            {step > 1 ? (
+              <Button
+                variant="outline"
+                onClick={() => setStep((s) => (s - 1) as BidStep)}
+              >
+                Back
+              </Button>
+            ) : null}
+            {step < 3 ? (
+              <Button
+                onClick={() => {
+                  if (!validateStep(step)) return;
+                  setStep((s) => (s + 1) as BidStep);
+                }}
+              >
+                Continue
+              </Button>
+            ) : (
+              <Button onClick={submitBid}>
+                {myBid && canEditBid ? "Update bid" : "Submit bid"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

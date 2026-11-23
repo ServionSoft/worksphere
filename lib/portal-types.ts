@@ -18,7 +18,7 @@ export type DeveloperStatus =
 
 export type OpportunityPricing = "fixed" | "quotation";
 
-export type OpportunityStatus = "open" | "closed" | "filled";
+export type OpportunityStatus = "draft" | "open" | "closed" | "filled";
 
 export type ExperienceLevel = "junior" | "mid" | "senior" | "lead";
 
@@ -35,6 +35,7 @@ export type OpportunityVisibility = "public" | "private" | "direct";
 
 export type QuotationStatus =
   | "pending"
+  | "shortlisted"
   | "accepted"
   | "rejected"
   | "withdrawn";
@@ -129,11 +130,58 @@ export interface Quotation {
   opportunityId: string;
   developerId: string;
   developerName: string;
+  developerStatus?: string;
+  developerSkills?: string[];
+  developerTitle?: string;
+  developerRating?: number;
   price: number;
   estimatedDays: number;
   coverMessage: string;
+  approach?: string;
+  understanding?: string;
+  relevantExperience?: string;
+  portfolioLinks?: string[];
+  attachments?: string[];
+  rejectionReason?: string;
+  adminNotes?: string;
+  shortlistedAt?: string;
+  decidedAt?: string;
   status: QuotationStatus;
   submittedAt: string;
+}
+
+export interface QuotationSubmitInput {
+  opportunityId: string;
+  developerId: string;
+  developerName: string;
+  price: number;
+  estimatedDays: number;
+  coverMessage: string;
+  approach?: string;
+  understanding?: string;
+  relevantExperience?: string;
+  portfolioLinks?: string[];
+  attachments?: string[];
+}
+
+export interface QuotationPatchInput {
+  status?: QuotationStatus;
+  rejectionReason?: string;
+  adminNotes?: string;
+  price?: number;
+  estimatedDays?: number;
+  coverMessage?: string;
+  approach?: string;
+  understanding?: string;
+  relevantExperience?: string;
+  portfolioLinks?: string[];
+  attachments?: string[];
+}
+
+export interface AwardQuotationInput {
+  approvedAmount?: number;
+  approvedDays?: number;
+  note?: string;
 }
 
 export interface DeveloperAssignment {

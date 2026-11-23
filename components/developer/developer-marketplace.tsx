@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Bookmark, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,10 +15,11 @@ import { formatCurrency, formatShortDate } from "@/lib/format";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import { toast } from "sonner";
 
-type MarketTab = "browse" | "saved" | "applications";
+type MarketTab = "browse" | "saved" | "bids";
 
 export function DeveloperMarketplacePage() {
   const { user } = useRequiredAuth();
+  const searchParams = useSearchParams();
   const {
     opportunities,
     quotations,
@@ -25,19 +27,36 @@ export function DeveloperMarketplacePage() {
     savedOpportunityIds,
     saveOpportunity,
     unsaveOpportunity,
+    updateQuotationStatus,
     developers,
   } = useWorkspaceStore();
   const profile = developers.find((d) => d.id === user.developerId);
   const developerId = user.developerId ?? "";
   const [query, setQuery] = useState("");
   const [skill, setSkill] = useState("all");
+  const [category, setCategory] = useState("all");
   const [pricing, setPricing] = useState<"all" | "fixed" | "quotation">("all");
-  const [sort, setSort] = useState<"deadline" | "budget">("deadline");
+  const [sort, setSort] = useState<"newest" | "deadline" | "budget">("newest");
   const [tab, setTab] = useState<MarketTab>("browse");
+
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    if (t === "bids" || t === "applications") setTab("bids");
+    if (t === "saved") setTab("saved");
+    if (t === "browse") setTab("browse");
+  }, [searchParams]);
 
   const skills = useMemo(() => {
     const set = new Set<string>();
     opportunities.forEach((o) => o.skills.forEach((s) => set.add(s)));
+    return ["all", ...Array.from(set)];
+  }, [opportunities]);
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    opportunities.forEach((o) => {
+      if (o.category) set.add(o.category);
+    });
     return ["all", ...Array.from(set)];
   }, [opportunities]);
 
@@ -62,6 +81,9 @@ export function DeveloperMarketplacePage() {
     return base
       .filter((o) => (pricing === "all" ? true : o.pricing === pricing))
       .filter((o) => (skill === "all" ? true : o.skills.includes(skill)))
+      .filter((o) =>
+        category === "all" ? true : o.category === category
+      )
       .filter(
         (o) =>
           !q ||
@@ -69,15 +91,16 @@ export function DeveloperMarketplacePage() {
           o.summary.toLowerCase().includes(q) ||
           o.skills.some((s) => s.toLowerCase().includes(q))
       )
-      .sort((a, b) =>
-        sort === "deadline"
-          ? a.deadline.localeCompare(b.deadline)
-          : b.budgetMax - a.budgetMax
-      );
+      .sort((a, b) => {
+        if (sort === "deadline") return a.deadline.localeCompare(b.deadline);
+        if (sort === "budget") return b.budgetMax - a.budgetMax;
+        return (b.publishedAt || "").localeCompare(a.publishedAt || "");
+      });
   }, [
     visibleOpportunities,
     query,
     skill,
+    category,
     pricing,
     sort,
     tab,
@@ -115,7 +138,7 @@ export function DeveloperMarketplacePage() {
     [assignments, developerId]
   );
 
-  const applicationCount = myQuotations.length + myFixedAccepts.length;
+  const bidCount = myQuotations.length + myFixedAccepts.length;
 
   const statusLabel = (status: string) =>
     status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -126,8 +149,8 @@ export function DeveloperMarketplacePage() {
         title="Marketplace"
         description={
           profile?.status === "verified"
-            ? "Browse admin-published technical opportunities."
-            : "Some restricted assignments require verified developer status."
+            ? "Browse opportunities, submit bids, and track My Bids."
+            : "Verification is required before you can submit bids."
         }
       />
 
@@ -140,13 +163,11 @@ export function DeveloperMarketplacePage() {
           <TabsTrigger value="saved">
             Saved ({savedOpportunityIds.length})
           </TabsTrigger>
-          <TabsTrigger value="applications">
-            My applications ({applicationCount})
-          </TabsTrigger>
+          <TabsTrigger value="bids">My Bids ({bidCount})</TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {tab !== "applications" ? (
+      {tab !== "bids" ? (
         <>
           <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-center">
             <div className="relative w-full max-w-sm">
@@ -172,6 +193,17 @@ export function DeveloperMarketplacePage() {
               </select>
               <select
                 className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+              >
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c === "all" ? "All categories" : c}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
                 value={pricing}
                 onChange={(e) => setPricing(e.target.value as typeof pricing)}
               >
@@ -184,8 +216,9 @@ export function DeveloperMarketplacePage() {
                 value={sort}
                 onChange={(e) => setSort(e.target.value as typeof sort)}
               >
-                <option value="deadline">Sort by deadline</option>
-                <option value="budget">Sort by budget</option>
+                <option value="newest">Newest</option>
+                <option value="deadline">Deadline</option>
+                <option value="budget">Budget</option>
               </select>
             </div>
           </div>
@@ -267,18 +300,21 @@ export function DeveloperMarketplacePage() {
           </div>
         </>
       ) : (
-        <SectionCard title="My applications" bodyClassName="p-0">
+        <SectionCard title="My Bids" bodyClassName="p-0">
           <ul className="divide-y divide-border">
             {myQuotations.map((q) => {
               const opp = opportunities.find((o) => o.id === q.opportunityId);
+              const canWithdraw =
+                ["pending", "shortlisted"].includes(q.status) &&
+                opp?.status === "open";
               return (
                 <li
                   key={`q-${q.id}`}
                   className="flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div>
+                  <div className="min-w-0">
                     <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                      <Badge variant="secondary">Quotation</Badge>
+                      <Badge variant="secondary">Bid</Badge>
                       <Badge variant="outline">{statusLabel(q.status)}</Badge>
                     </div>
                     <Link
@@ -288,12 +324,52 @@ export function DeveloperMarketplacePage() {
                       {opp?.title ?? q.opportunityId}
                     </Link>
                     <p className="text-xs text-muted-foreground">
-                      {formatCurrency(q.price)} · {q.estimatedDays} days · Submitted{" "}
-                      {formatShortDate(q.submittedAt)}
+                      {formatCurrency(q.price)} · {q.estimatedDays} days ·
+                      Submitted {formatShortDate(q.submittedAt)}
+                      {q.shortlistedAt
+                        ? ` · Shortlisted ${formatShortDate(q.shortlistedAt)}`
+                        : ""}
+                      {q.decidedAt
+                        ? ` · Updated ${formatShortDate(q.decidedAt)}`
+                        : ""}
                     </p>
                     <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                       {q.coverMessage}
                     </p>
+                    {q.rejectionReason ? (
+                      <p className="mt-1 text-xs text-destructive">
+                        Feedback: {q.rejectionReason}
+                      </p>
+                    ) : null}
+                    {q.adminNotes && q.status === "accepted" ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Award note: {q.adminNotes}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      render={
+                        <Link href={`/developer/marketplace/${q.opportunityId}`} />
+                      }
+                      nativeButton={false}
+                    >
+                      Open
+                    </Button>
+                    {canWithdraw ? (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => {
+                          updateQuotationStatus(q.id, "withdrawn");
+                          toast.success("Bid withdrawn");
+                        }}
+                      >
+                        Withdraw
+                      </Button>
+                    ) : null}
                   </div>
                 </li>
               );
@@ -335,13 +411,14 @@ export function DeveloperMarketplacePage() {
                 </li>
               );
             })}
-            {applicationCount === 0 ? (
+            {bidCount === 0 ? (
               <li className="px-5 py-10 text-center text-sm text-muted-foreground">
-                No quotations or fixed-price acceptances yet.
+                No bids yet. Browse open opportunities and submit a proposal.
               </li>
             ) : null}
           </ul>
-        </SectionCard>      )}
+        </SectionCard>
+      )}
     </div>
   );
 }

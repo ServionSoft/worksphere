@@ -16,13 +16,7 @@ export function DeveloperRouteShell({
     pathname.startsWith("/developer/register/");
 
   if (isPublicRegister) {
-    return (
-      <div className="min-h-svh bg-background">
-        <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6">
-          {children}
-        </div>
-      </div>
-    );
+    return <>{children}</>;
   }
 
   return (

@@ -489,7 +489,9 @@ export function deleteApiMilestone(workspaceId: string, milestoneId: string) {
 
 export function createApiOpportunity(
   workspaceId: string,
-  opp: Omit<MarketplaceOpportunity, "id" | "publishedAt" | "status">
+  opp: Omit<MarketplaceOpportunity, "id" | "publishedAt"> & {
+    status?: OpportunityStatus;
+  }
 ) {
   return apiFetch<MarketplaceOpportunity>(
     `/api/workspaces/${workspaceId}/opportunities`,
@@ -551,10 +553,49 @@ export function submitApiQuotation(
   });
 }
 
-export function acceptApiQuotation(workspaceId: string, quotationId: string) {
+export function patchApiQuotation(
+  workspaceId: string,
+  quotationId: string,
+  patch: {
+    status?: QuotationStatus;
+    rejectionReason?: string;
+    adminNotes?: string;
+    price?: number;
+    estimatedDays?: number;
+    coverMessage?: string;
+    approach?: string;
+    understanding?: string;
+    relevantExperience?: string;
+    portfolioLinks?: string[];
+    attachments?: string[];
+  }
+) {
+  return apiFetch<Quotation>(
+    `/api/workspaces/${workspaceId}/quotations/${quotationId}`,
+    {
+      method: "PATCH",
+      workspaceId,
+      body: JSON.stringify(patch),
+    }
+  );
+}
+
+export function acceptApiQuotation(
+  workspaceId: string,
+  quotationId: string,
+  body?: {
+    approvedAmount?: number;
+    approvedDays?: number;
+    note?: string;
+  }
+) {
   return apiFetch<{ quotation: Quotation; assignment: DeveloperAssignment }>(
     `/api/workspaces/${workspaceId}/quotations/${quotationId}/accept`,
-    { method: "POST", workspaceId }
+    {
+      method: "POST",
+      workspaceId,
+      body: JSON.stringify(body ?? {}),
+    }
   );
 }
 
@@ -951,17 +992,8 @@ export function setApiOpportunityStatus(
 export function updateApiQuotationStatus(
   workspaceId: string,
   id: string,
-  status: QuotationStatus
+  status: QuotationStatus,
+  extra?: { rejectionReason?: string; adminNotes?: string }
 ) {
-  return apiFetch<Quotation>(
-    `/api/workspaces/${workspaceId}/quotations/${id}`,
-    {
-      method: "PATCH",
-      workspaceId,
-      body: JSON.stringify({ status }),
-    }
-  ).catch(async () => {
-    // Some backends only expose accept; treat as soft no-op shape
-    return { id, status } as Quotation;
-  });
+  return patchApiQuotation(workspaceId, id, { status, ...extra });
 }

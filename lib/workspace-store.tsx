@@ -52,6 +52,7 @@ import {
   patchApiMilestoneStatus,
   patchApiOpportunity,
   patchApiProject,
+  patchApiQuotation,
   patchApiTask,
   patchApiTaskStatus,
   registerApiDeveloper,
@@ -139,7 +140,9 @@ import type {
   OpportunityStatus,
   PortalMessage,
   PortalNotification,
+  AwardQuotationInput,
   Quotation,
+  QuotationPatchInput,
   QuotationStatus,
   SavedOpportunity,
   WorkSubmissionVersion,
@@ -309,7 +312,9 @@ interface WorkspaceStoreValue {
   savedOpportunityIds: string[];
 
   addOpportunity: (
-    opp: Omit<MarketplaceOpportunity, "id" | "publishedAt" | "status">
+    opp: Omit<MarketplaceOpportunity, "id" | "publishedAt"> & {
+      status?: OpportunityStatus;
+    }
   ) => void;
   updateOpportunity: (id: string, patch: Partial<MarketplaceOpportunity>) => void;
   setOpportunityStatus: (id: string, status: OpportunityStatus) => void;
@@ -319,8 +324,16 @@ interface WorkspaceStoreValue {
   submitQuotation: (
     quotation: Omit<Quotation, "id" | "submittedAt" | "status">
   ) => void;
-  updateQuotationStatus: (id: string, status: QuotationStatus) => void;
-  acceptQuotation: (quotationId: string) => void;
+  updateQuotationStatus: (
+    id: string,
+    status: QuotationStatus,
+    extra?: { rejectionReason?: string; adminNotes?: string }
+  ) => void;
+  patchQuotation: (id: string, patch: QuotationPatchInput) => void;
+  acceptQuotation: (
+    quotationId: string,
+    award?: AwardQuotationInput
+  ) => void;
   acceptFixedOpportunity: (
     opportunityId: string,
     developerId: string,
@@ -1718,25 +1731,32 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const addOpportunity = useCallback(
-    (opp: Omit<MarketplaceOpportunity, "id" | "publishedAt" | "status">) => {
+    (
+      opp: Omit<MarketplaceOpportunity, "id" | "publishedAt"> & {
+        status?: OpportunityStatus;
+      }
+    ) => {
       const id = demoId("opp");
+      const status = opp.status ?? "open";
       setOpportunities((prev) => [
         {
           ...opp,
           id,
-          publishedAt: DEMO_TS,
-          status: "open",
+          publishedAt: status === "draft" ? "" : DEMO_TS,
+          status,
         },
         ...prev,
       ]);
-      notify({
-        portal: "developer",
-        userId: "du1",
-        workspaceId: opp.workspaceId || workspaceIdRef.current,
-        title: "New marketplace opportunity",
-        body: opp.title,
-        href: `/developer/marketplace/${id}`,
-      });
+      if (status !== "draft") {
+        notify({
+          portal: "developer",
+          userId: "du1",
+          workspaceId: opp.workspaceId || workspaceIdRef.current,
+          title: "New marketplace opportunity",
+          body: opp.title,
+          href: `/developer/marketplace/${id}`,
+        });
+      }
       runApi(async () => {
         const remote = await createApiOpportunity(
           workspaceIdRef.current,
@@ -1840,20 +1860,90 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const updateQuotationStatus = useCallback(
-    (id: string, status: QuotationStatus) => {
+    (
+      id: string,
+      status: QuotationStatus,
+      extra?: { rejectionReason?: string; adminNotes?: string }
+    ) => {
       setQuotations((prev) =>
-        prev.map((q) => (q.id === id ? { ...q, status } : q))
+        prev.map((q) =>
+          q.id === id
+            ? {
+                ...q,
+                status,
+                rejectionReason: extra?.rejectionReason ?? q.rejectionReason,
+                adminNotes: extra?.adminNotes ?? q.adminNotes,
+                shortlistedAt:
+                  status === "shortlisted"
+                    ? DEMO_TS
+                    : q.shortlistedAt,
+              }
+            : q
+        )
       );
+      const quote = quotations.find((q) => q.id === id);
+      if (quote && (status === "shortlisted" || status === "rejected" || status === "withdrawn")) {
+        const opp = opportunities.find((o) => o.id === quote.opportunityId);
+        const titles: Record<string, string> = {
+          shortlisted: "Bid shortlisted",
+          rejected: "Bid not selected",
+          withdrawn: "Bid withdrawn",
+        };
+        notify({
+          portal: status === "withdrawn" ? "admin" : "developer",
+          userId:
+            status === "withdrawn"
+              ? currentUser.id
+              : resolveDeveloperUserId(quote.developerId),
+          title: titles[status] ?? "Bid updated",
+          body: opp?.title ?? quote.coverMessage.slice(0, 80),
+          href:
+            status === "withdrawn"
+              ? "/marketplace"
+              : "/developer/marketplace",
+        });
+      }
+      runApi(async () => {
+        const remote = await patchApiQuotation(
+          workspaceIdRef.current,
+          id,
+          { status, ...extra }
+        );
+        setQuotations((prev) =>
+          prev.map((q) => (q.id === id ? remote : q))
+        );
+      }, "Update bid status");
+    },
+    [quotations, opportunities, resolveDeveloperUserId, notify]
+  );
+
+  const patchQuotation = useCallback(
+    (id: string, patch: QuotationPatchInput) => {
+      setQuotations((prev) =>
+        prev.map((q) => (q.id === id ? { ...q, ...patch } : q))
+      );
+      runApi(async () => {
+        const remote = await patchApiQuotation(
+          workspaceIdRef.current,
+          id,
+          patch
+        );
+        setQuotations((prev) =>
+          prev.map((q) => (q.id === id ? remote : q))
+        );
+      }, "Update bid");
     },
     []
   );
 
   const acceptQuotation = useCallback(
-    (quotationId: string) => {
+    (quotationId: string, award?: AwardQuotationInput) => {
       const quote = quotations.find((q) => q.id === quotationId);
       if (!quote) return;
       const opp = opportunities.find((o) => o.id === quote.opportunityId);
       if (!opp) return;
+      const approvedAmount = award?.approvedAmount ?? quote.price;
+      const approvedDays = award?.approvedDays ?? quote.estimatedDays;
       setQuotations((prev) =>
         prev.map((q) =>
           q.opportunityId === quote.opportunityId
@@ -1863,6 +1953,13 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
                   q.id === quotationId
                     ? ("accepted" as QuotationStatus)
                     : ("rejected" as QuotationStatus),
+                price: q.id === quotationId ? approvedAmount : q.price,
+                estimatedDays:
+                  q.id === quotationId ? approvedDays : q.estimatedDays,
+                adminNotes:
+                  q.id === quotationId
+                    ? award?.note ?? q.adminNotes
+                    : q.adminNotes,
               }
             : q
         )
@@ -1875,7 +1972,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
         title: opp.title,
         projectId: opp.projectId,
         projectName: opp.projectName,
-        budget: quote.price,
+        budget: approvedAmount,
         currency: opp.currency,
         startDate: "2026-03-11",
         deadline: opp.deadline,
@@ -1900,14 +1997,15 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       notify({
         portal: "developer",
         userId: resolveDeveloperUserId(quote.developerId),
-        title: "Quotation accepted — confirm assignment",
-        body: opp.title,
+        title: "Project awarded — confirm assignment",
+        body: `${opp.title} · $${approvedAmount} · ${approvedDays} days`,
         href: "/developer/my-tasks",
       });
       runApi(async () => {
         const remote = await acceptApiQuotation(
           workspaceIdRef.current,
-          quotationId
+          quotationId,
+          award
         );
         setQuotations((prev) =>
           prev.map((q) =>
@@ -1918,7 +2016,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
           remote.assignment,
           ...prev.filter((a) => a.id !== assignment.id),
         ]);
-      }, "Accept quotation");
+      }, "Award bid");
     },
     [quotations, opportunities, resolveDeveloperUserId, notify]
   );
@@ -3056,6 +3154,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       unsaveOpportunity,
       submitQuotation,
       updateQuotationStatus,
+      patchQuotation,
       acceptQuotation,
       acceptFixedOpportunity,
       confirmAssignment,
@@ -3146,6 +3245,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       unsaveOpportunity,
       submitQuotation,
       updateQuotationStatus,
+      patchQuotation,
       acceptQuotation,
       acceptFixedOpportunity,
       confirmAssignment,
