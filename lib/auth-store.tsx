@@ -32,6 +32,7 @@ import {
   writeSessionToStorage,
   type AuthSession,
 } from "@/lib/auth-session";
+import { authCallbackUrl } from "@/lib/auth-redirect";
 import {
   clearDeveloperRegistrationDraft,
   readDeveloperRegistrationDraft,
@@ -381,14 +382,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!supabase) {
         return { ok: false, message: "Supabase is not configured." };
       }
-      const redirectTo =
-        typeof window !== "undefined"
-          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(
-              "/login/reset-password"
-            )}`
-          : undefined;
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo,
+        redirectTo: authCallbackUrl("/login/reset-password"),
       });
       if (error) return { ok: false, message: error.message };
       return {

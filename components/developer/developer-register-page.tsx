@@ -28,6 +28,7 @@ import { WorkSphereLogo } from "@/components/layout/logo";
 import { bootstrapProfile, onboard } from "@/lib/api/auth";
 import { isApiDataSource } from "@/lib/data-source";
 import { isValidEmail } from "@/lib/demo-credentials";
+import { authCallbackUrl } from "@/lib/auth-redirect";
 import {
   clearDeveloperRegistrationDraft,
   passwordStrengthIssues,
@@ -305,12 +306,10 @@ export function DeveloperRegisterPage() {
   const strength = passwordScore(password);
   const strengthIssues = passwordStrengthIssues(password);
 
-  const emailRedirectTo = useMemo(() => {
-    if (typeof window === "undefined") return undefined;
-    return `${window.location.origin}/auth/callback?next=${encodeURIComponent(
-      "/login?portal=developer&verified=1"
-    )}`;
-  }, []);
+  const emailRedirectTo = useMemo(
+    () => authCallbackUrl("/login?portal=developer&verified=1"),
+    []
+  );
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -838,7 +837,7 @@ export function DeveloperRegisterPage() {
                       ))}
                     </div>
                     <div className="relative mt-2">
-                      <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <Search className="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         id="skills"
                         value={skillQuery}
@@ -851,7 +850,7 @@ export function DeveloperRegisterPage() {
                           }
                         }}
                         placeholder="Search or add a skill"
-                        className="h-9 border-0 bg-transparent shadow-none focus-visible:ring-0"
+                        className="h-9 border-0 bg-transparent pl-8 shadow-none focus-visible:ring-0"
                         aria-invalid={Boolean(fieldErrors.skills)}
                       />
                     </div>
