@@ -63,6 +63,8 @@ const statuses: MilestoneStatus[] = [
 
 interface ProjectMilestonesProps {
   projectId: string;
+  /** Use stacked layout inside drawers/sheets (viewport xl breakpoints still apply there). */
+  layout?: "page" | "sheet";
 }
 
 interface MilestoneFormState {
@@ -104,7 +106,10 @@ function marginPreview(clientPrice: number, developerCost: number) {
   return { margin, pct };
 }
 
-export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
+export function ProjectMilestones({
+  projectId,
+  layout = "page",
+}: ProjectMilestonesProps) {
   const {
     milestones,
     tasks,
@@ -315,13 +320,21 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
   const cost = awarded != null ? awarded : developerBudget;
   const { margin, pct } = marginPreview(clientPrice, cost);
 
+  const sheetLayout = layout === "sheet";
+
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+    <div
+      className={
+        sheetLayout
+          ? "flex flex-col gap-4"
+          : "grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]"
+      }
+    >
       <SectionCard
         title="Milestones"
         description="Independent production + commercial units. Approve before publishing."
         action={
-          <div className="flex flex-wrap gap-2">
+          <>
             <Button
               size="sm"
               variant="outline"
@@ -333,13 +346,13 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
               ) : (
                 <Sparkles data-icon="inline-start" />
               )}
-              Generate from scope
+              {sheetLayout ? "Generate" : "Generate from scope"}
             </Button>
             <Button size="sm" onClick={openCreate}>
               <Plus data-icon="inline-start" />
               Add
             </Button>
-          </div>
+          </>
         }
         bodyClassName="p-0"
       >
@@ -426,7 +439,7 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
               title={selected.title}
               description={`${milestoneLabels[selected.status]} · ${selected.commercialStatus ?? "unpriced"} · ${selected.marketplaceStatus ?? "not_published"}`}
               action={
-                <div className="flex flex-wrap gap-2">
+                <>
                   <Button
                     size="sm"
                     variant="outline"
@@ -481,7 +494,7 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
                   >
                     <Trash2 data-icon="inline-start" />
                   </Button>
-                </div>
+                </>
               }
             >
               <div className="grid gap-3 sm:grid-cols-2">

@@ -25,9 +25,9 @@ export function ManageMilestonesSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="w-full gap-0 overflow-y-auto p-0 sm:max-w-4xl"
+        className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl md:max-w-2xl"
       >
-        <SheetHeader className="border-b border-border px-4 py-4 sm:px-6">
+        <SheetHeader className="shrink-0 border-b border-border px-4 py-4 sm:px-6">
           <SheetTitle>
             {project ? `Milestones · ${project.name}` : "Milestones"}
           </SheetTitle>
@@ -36,8 +36,10 @@ export function ManageMilestonesSheet({
             leaving the projects list.
           </SheetDescription>
         </SheetHeader>
-        <div className="px-4 py-4 sm:px-6">
-          {project ? <ProjectMilestones projectId={project.id} /> : null}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+          {project ? (
+            <ProjectMilestones projectId={project.id} layout="sheet" />
+          ) : null}
         </div>
       </SheetContent>
     </Sheet>

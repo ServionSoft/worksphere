@@ -25,14 +25,16 @@ export function SectionCard({
         className
       )}
     >
-      <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
-        <div>
+      <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:px-5">
+        <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold text-foreground">{title}</h2>
           {description ? (
             <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
           ) : null}
         </div>
-        {action}
+        {action ? (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>
+        ) : null}
       </div>
       <div className={cn("p-4 sm:p-5", bodyClassName)}>{children}</div>
     </section>
