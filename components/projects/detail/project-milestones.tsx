@@ -36,6 +36,11 @@ import {
   MilestoneStatusBadge,
   milestoneLabels,
 } from "@/components/shared/milestone-badge";
+import {
+  flushStagedMilestoneAttachments,
+  MilestoneAttachmentsPanel,
+} from "@/components/projects/milestone-attachments-panel";
+import type { StagedAttachment } from "@/lib/api/milestone-attachments";
 import { DEMO_NOW_ISO, demoId } from "@/lib/demo-clock";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
@@ -136,17 +141,20 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [publishBusy, setPublishBusy] = useState(false);
+  const [staged, setStaged] = useState<StagedAttachment[]>([]);
 
   const selected = items.find((m) => m.id === selectedId) ?? items[0] ?? null;
 
   function openCreate() {
     setEditing(null);
     setForm(emptyForm);
+    setStaged([]);
     setOpen(true);
   }
 
   function openEdit(m: Milestone) {
     setEditing(m);
+    setStaged([]);
     setForm({
       title: m.title,
       description: m.description,
@@ -164,7 +172,7 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
     setOpen(true);
   }
 
-  function saveForm() {
+  async function saveForm() {
     if (!form.title.trim()) {
       toast.error("Title is required");
       return;
@@ -198,14 +206,31 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
         clientPrice > 0 || developerBudget > 0 ? "priced" : "unpriced",
       marketplaceStatus: editing?.marketplaceStatus ?? "not_published",
     };
-    if (editing) {
-      updateMilestone(editing.id, payload);
-      toast.success("Milestone updated");
-    } else {
-      addMilestone(payload);
-      toast.success("Milestone created");
+    try {
+      if (editing) {
+        updateMilestone(editing.id, payload);
+        toast.success("Milestone updated");
+      } else {
+        const created = await addMilestone(payload);
+        if (isApiDataSource() && staged.length > 0 && created?.id && workspace?.id) {
+          const result = await flushStagedMilestoneAttachments({
+            workspaceId: workspace.id,
+            milestoneId: created.id,
+            staged,
+            onProgress: setStaged,
+          });
+          if (result.failed > 0) {
+            toast.error(`${result.failed} attachment(s) failed to upload`);
+          } else if (result.uploaded > 0) {
+            toast.success(`${result.uploaded} file(s) uploaded`);
+          }
+        }
+        toast.success("Milestone created");
+      }
+      setOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save milestone");
     }
-    setOpen(false);
   }
 
   async function onApprove(m: Milestone) {
@@ -576,6 +601,13 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
                 <p className="text-sm text-muted-foreground">Not published.</p>
               )}
             </SectionCard>
+
+            {workspace?.id ? (
+              <MilestoneAttachmentsPanel
+                workspaceId={workspace.id}
+                milestoneId={selected.id}
+              />
+            ) : null}
           </>
         )}
       </div>
@@ -753,12 +785,22 @@ export function ProjectMilestones({ projectId }: ProjectMilestonesProps) {
                 }
               />
             </div>
+            {workspace?.id ? (
+              <MilestoneAttachmentsPanel
+                workspaceId={workspace.id}
+                milestoneId={editing?.id}
+                staged={editing ? undefined : staged}
+                onStagedChange={editing ? undefined : setStaged}
+                compact
+                title="Scope, Deliverables & Attachments"
+              />
+            ) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={saveForm}>Save</Button>
+            <Button onClick={() => void saveForm()}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

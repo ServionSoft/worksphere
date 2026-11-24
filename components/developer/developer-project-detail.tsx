@@ -29,6 +29,8 @@ import {
   TaskSubmissionHistory,
   TaskSubmitWorkDialog,
 } from "@/components/developer/task-submit-work-dialog";
+import { MilestoneAttachmentsPanel } from "@/components/projects/milestone-attachments-panel";
+import { SubmissionDeliverables } from "@/components/shared/submission-deliverables";
 import { toast } from "sonner";
 
 /** Working statuses — final submit uses Submit Work form, not a bare review flip. */
@@ -42,6 +44,7 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
   const { user } = useRequiredAuth();
   const {
     workspace,
+    workspaceId,
     projects,
     assignments,
     tasks,
@@ -493,6 +496,61 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
                       this milestone
                     </p>
                   ) : null}
+
+                  <div className="mt-4 space-y-3">
+                    <p className="text-xs font-medium">Files &amp; Deliverables</p>
+                    {workspaceId || workspace?.id ? (
+                      <MilestoneAttachmentsPanel
+                        workspaceId={workspaceId || workspace.id}
+                        milestoneId={m.id}
+                        readOnly
+                        compact
+                        title="Admin-provided files"
+                      />
+                    ) : null}
+                    {(() => {
+                      const milSubs = workSubmissions
+                        .filter(
+                          (w) =>
+                            w.milestoneId === m.id ||
+                            myLinked.some((t) => t.id === w.taskId)
+                        )
+                        .sort((a, b) => b.version - a.version);
+                      if (!milSubs.length) {
+                        return (
+                          <p className="text-xs text-muted-foreground">
+                            No developer submissions for this milestone yet.
+                            Use Submit Work on a task to upload deliverables.
+                          </p>
+                        );
+                      }
+                      return (
+                        <ul className="space-y-2">
+                          {milSubs.map((sub) => (
+                            <li
+                              key={sub.id}
+                              className="rounded-md border border-border px-3 py-2"
+                            >
+                              <p className="text-sm font-medium">
+                                {sub.title}{" "}
+                                <span className="text-xs font-normal text-muted-foreground">
+                                  v{sub.version} · {sub.status}
+                                </span>
+                              </p>
+                              <SubmissionDeliverables
+                                files={sub.files}
+                                repoUrl={sub.repoUrl}
+                                deployUrl={sub.deployUrl}
+                                designUrl={sub.designUrl}
+                                testingNotes={sub.testingNotes}
+                                compact
+                              />
+                            </li>
+                          ))}
+                        </ul>
+                      );
+                    })()}
+                  </div>
                 </SectionCard>
               );
             })}

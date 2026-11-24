@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/shared/section-card";
 import { SubmissionStatusBadge } from "@/components/shared/milestone-badge";
+import { SubmissionDeliverables } from "@/components/shared/submission-deliverables";
 import { useRequiredAuth } from "@/lib/auth-store";
 import { formatShortDate } from "@/lib/format";
 import {
@@ -249,31 +250,13 @@ export function ClientApprovalsPage() {
                 </p>
               </div>
               <p className="mt-3 text-sm">{item.description}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {item.files.map((file) => (
-                  <Button
-                    key={file}
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      toast.message("File download unavailable", {
-                        description: `${file} — signed Storage URL not configured`,
-                      })
-                    }
-                  >
-                    {file}
-                  </Button>
-                ))}
-                {item.repoUrl ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => toast.message(item.repoUrl!)}
-                  >
-                    Repository
-                  </Button>
-                ) : null}
-              </div>
+              <SubmissionDeliverables
+                files={item.files}
+                repoUrl={item.repoUrl}
+                deployUrl={item.deployUrl}
+                designUrl={item.designUrl}
+                testingNotes={item.testingNotes}
+              />
 
               {item.clientApprovalStatus === "pending" ? (
                 <div className="mt-4 flex flex-col gap-2">

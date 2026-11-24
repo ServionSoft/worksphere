@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -41,6 +42,7 @@ interface ProjectDetailPageProps {
 
 export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
   const { user } = useRequiredAuth();
+  const searchParams = useSearchParams();
   const {
     hydrated,
     projects,
@@ -48,11 +50,31 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
     milestones,
     addTask,
   } = useWorkspaceStore();
+  const tabFromQuery = searchParams.get("tab");
   const [tab, setTab] = useLocalStorage(
     `worksphere.project.${projectId}.tab`,
     "overview"
   );
   const [mountedTab, setMountedTab] = useState(tab);
+
+  useEffect(() => {
+    const allowed = new Set([
+      "overview",
+      "scope",
+      "board",
+      "tasks",
+      "timeline",
+      "milestones",
+      "finance",
+      "documents",
+      "approvals",
+      "activity",
+    ]);
+    if (tabFromQuery && allowed.has(tabFromQuery)) {
+      setMountedTab(tabFromQuery);
+      setTab(tabFromQuery);
+    }
+  }, [tabFromQuery, setTab]);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const allowDelete = canDeleteProjects(user.role);
 

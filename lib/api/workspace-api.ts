@@ -455,12 +455,14 @@ export function createApiMilestone(workspaceId: string, milestone: Milestone) {
       deliverables: milestone.deliverables,
       acceptanceCriteria: milestone.acceptanceCriteria,
       requiredSkills: milestone.requiredSkills,
+      dependencyIds: milestone.dependencyIds,
       estimatedDays: milestone.estimatedDays ?? undefined,
       clientPrice: milestone.clientPrice,
       developerBudget: milestone.developerBudget,
       currency: milestone.currency,
       planStatus: milestone.planStatus,
       source: milestone.source,
+      sortOrder: milestone.sortOrder,
     }),
   });
 }

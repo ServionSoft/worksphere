@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,6 +10,8 @@ import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SectionCard } from "@/components/shared/section-card";
+import { MilestoneAttachmentsPanel } from "@/components/projects/milestone-attachments-panel";
+import { SubmissionDeliverables } from "@/components/shared/submission-deliverables";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +22,12 @@ import {
 } from "@/components/ui/dialog";
 import { useRequiredAuth } from "@/lib/auth-store";
 import { formatCurrency, formatDate, formatShortDate } from "@/lib/format";
+import { isApiDataSource } from "@/lib/data-source";
+import {
+  encodeStorageFileRef,
+  uploadSubmissionFile,
+  type UploadedDeliverable,
+} from "@/lib/supabase/submission-storage";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import type { AssignmentStatus } from "@/lib/portal-types";
 import { toast } from "sonner";
@@ -37,7 +45,10 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
     milestones,
     tasks,
     requestExtension,
+    workspaceId,
+    workspace,
   } = useWorkspaceStore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const assignment = assignments.find(
     (a) => a.id === assignmentId && a.developerId === user.developerId
@@ -74,6 +85,8 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
   const [extensionOpen, setExtensionOpen] = useState(false);
   const [extensionDate, setExtensionDate] = useState("");
   const [extensionReason, setExtensionReason] = useState("");
+  const [uploads, setUploads] = useState<UploadedDeliverable[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   if (!assignment) {
     return (
@@ -89,6 +102,34 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
   const awaitingConfirmation = assignment.status === "pending_confirmation";
   const workAllowed = !awaitingConfirmation;
 
+  async function onPickFiles(list: FileList | null) {
+    if (!list?.length || !assignment) return;
+    const ws = workspaceId || workspace?.id;
+    if (!ws || !isApiDataSource()) {
+      toast.error("File upload requires API mode with Supabase Storage");
+      return;
+    }
+    setUploading(true);
+    try {
+      const next: UploadedDeliverable[] = [...uploads];
+      for (const file of Array.from(list)) {
+        const uploaded = await uploadSubmissionFile({
+          file,
+          workspaceId: ws,
+          taskId: assignment.id,
+        });
+        next.push(uploaded);
+      }
+      setUploads(next);
+      toast.success("File(s) uploaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   function submitWork() {
     if (!can("submit_work")) {
       toast.error("You cannot submit work in this role");
@@ -102,6 +143,11 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
       toast.error("Add a submission description");
       return;
     }
+    if (uploads.length === 0 && !repoUrl.trim() && !deployUrl.trim()) {
+      toast.error("Attach at least one file or provide a repository / deploy URL");
+      return;
+    }
+    const files = uploads.map(encodeStorageFileRef);
     addWorkSubmission({
       assignmentId: assignment!.id,
       projectId: assignment!.projectId,
@@ -109,7 +155,7 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
       description: description.trim(),
       repoUrl: repoUrl || undefined,
       deployUrl: deployUrl || undefined,
-      files: ["deliverable-notes.md"],
+      files,
       screenshots: [],
       submittedBy: user.name,
       status: "submitted",
@@ -120,6 +166,7 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
       description: "Immutable version saved. Previous versions are preserved.",
     });
     setDescription("");
+    setUploads([]);
   }
 
   return (
@@ -351,18 +398,75 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
                 placeholder="Deployment URL"
                 disabled={!workAllowed}
               />
+              <div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => void onPickFiles(e.target.files)}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!workAllowed || uploading}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Paperclip data-icon="inline-start" />
+                  {uploading ? "Uploading…" : "Attach files"}
+                </Button>
+                {uploads.length > 0 ? (
+                  <ul className="mt-2 space-y-1">
+                    {uploads.map((u) => (
+                      <li
+                        key={u.path}
+                        className="flex items-center justify-between gap-2 text-xs"
+                      >
+                        <span className="truncate">{u.name}</span>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="size-7"
+                          onClick={() =>
+                            setUploads((prev) =>
+                              prev.filter((p) => p.path !== u.path)
+                            )
+                          }
+                        >
+                          <X className="size-3.5" />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
               <Button
                 className="w-fit"
                 onClick={submitWork}
-                disabled={!workAllowed}
+                disabled={!workAllowed || uploading}
               >
                 Submit version
               </Button>
               <p className="text-xs text-muted-foreground">
-                Uploads keep local metadata only. Submissions create a new immutable version.
+                Each submit creates a new immutable version. Previous files stay
+                intact.
               </p>
             </div>
           </SectionCard>
+
+          {linkedMilestone && (workspaceId || workspace?.id) ? (
+            <div className="mt-4">
+              <MilestoneAttachmentsPanel
+                workspaceId={workspaceId || workspace.id}
+                milestoneId={linkedMilestone.id}
+                readOnly
+                compact
+                title="Milestone files from Admin"
+              />
+            </div>
+          ) : null}
 
           <SectionCard title="Version history" className="mt-4" bodyClassName="p-0">
             <ul className="divide-y divide-border">
@@ -377,6 +481,14 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
                       ? ` · revision: ${v.revisionNotes ?? ""}`
                       : ""}
                   </p>
+                  <SubmissionDeliverables
+                    files={v.files}
+                    repoUrl={v.repoUrl}
+                    deployUrl={v.deployUrl}
+                    designUrl={v.designUrl}
+                    testingNotes={v.testingNotes}
+                    compact
+                  />
                 </li>
               ))}
               {versions.length === 0 ? (

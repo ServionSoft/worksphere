@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
 import {
   Archive,
@@ -11,6 +12,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Settings2,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -36,13 +38,18 @@ import { Progress } from "@/components/ui/progress";
 import { PageHeader } from "@/components/shared/page-header";
 import { ProjectStatusBadge } from "@/components/shared/status-badge";
 import { PriorityBadge } from "@/components/shared/priority-badge";
-import { ProjectCard } from "@/components/projects/project-card";
+import {
+  ProjectCard,
+  resolveProjectCardActions,
+} from "@/components/projects/project-card";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 import { EditProjectDialog } from "@/components/projects/edit-project-dialog";
 import {
   DeleteProjectDialog,
   canDeleteProjects,
 } from "@/components/projects/delete-project-dialog";
+import { AddMilestoneDialog } from "@/components/projects/add-milestone-dialog";
+import { ManageMilestonesSheet } from "@/components/projects/manage-milestones-sheet";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useRequiredAuth } from "@/lib/auth-store";
 import { formatShortDate } from "@/lib/format";
@@ -59,25 +66,48 @@ const statusFilters: Array<{ label: string; value: "all" | ProjectStatus }> = [
   { label: "Completed", value: "completed" },
 ];
 
+function canManageProjects(role: string | undefined) {
+  return (
+    role === "tenant_admin" ||
+    role === "project_manager" ||
+    role === "super_admin"
+  );
+}
+
 export function ProjectsView() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const initialQuery = searchParams.get("q") ?? "";
   const { user } = useRequiredAuth();
   const {
     projects,
+    milestones,
     searchQuery: globalQuery,
     archiveProject,
   } = useWorkspaceStore();
   const [createOpen, setCreateOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const [milestoneProject, setMilestoneProject] = useState<Project | null>(
+    null
+  );
+  const [manageProject, setManageProject] = useState<Project | null>(null);
   const allowDelete = canDeleteProjects(user.role);
+  const allowManage = canManageProjects(user.role);
   const [view, setView] = useLocalStorage<"grid" | "table">(
     "worksphere.projects.view",
     "grid"
   );
   const [status, setStatus] = useState<"all" | ProjectStatus>("all");
   const [query, setQuery] = useState(initialQuery || globalQuery);
+
+  const milestoneCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const m of milestones) {
+      map.set(m.projectId, (map.get(m.projectId) ?? 0) + 1);
+    }
+    return map;
+  }, [milestones]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -106,10 +136,12 @@ export function ProjectsView() {
         title="Projects"
         description="Manage delivery across clients, owners and timelines."
         actions={
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus data-icon="inline-start" />
-            Create project
-          </Button>
+          allowManage ? (
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus data-icon="inline-start" />
+              Create project
+            </Button>
+          ) : null
         }
       />
 
@@ -133,7 +165,8 @@ export function ProjectsView() {
                 variant={status === filter.value ? "secondary" : "ghost"}
                 onClick={() => setStatus(filter.value)}
                 className={cn(
-                  status === filter.value && "bg-primary/10 text-primary hover:bg-primary/15"
+                  status === filter.value &&
+                    "bg-primary/10 text-primary hover:bg-primary/15"
                 )}
               >
                 {filter.label}
@@ -172,10 +205,18 @@ export function ProjectsView() {
             <ProjectCard
               key={project.id}
               project={project}
+              milestoneCount={milestoneCounts.get(project.id) ?? 0}
+              canManage={allowManage}
               canDelete={allowDelete}
-              onEdit={setEditingProject}
-              onArchive={(p) => handleArchive(p.id, p.name)}
-              onDelete={setDeletingProject}
+              onAddMilestone={setMilestoneProject}
+              onManageMilestones={setManageProject}
+              onEdit={allowManage ? setEditingProject : undefined}
+              onArchive={
+                allowManage
+                  ? (p) => handleArchive(p.id, p.name)
+                  : undefined
+              }
+              onDelete={allowDelete ? setDeletingProject : undefined}
             />
           ))}
         </div>
@@ -191,89 +232,164 @@ export function ProjectsView() {
                   <TableHead>Status</TableHead>
                   <TableHead className="min-w-40">Progress</TableHead>
                   <TableHead>Priority</TableHead>
+                  <TableHead>Milestones</TableHead>
                   <TableHead>Deadline</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((project) => (
-                  <TableRow key={project.id}>
-                    <TableCell>
-                      <div>
-                        <Link
-                          href={`/projects/${project.id}`}
-                          className="font-medium text-foreground hover:text-primary hover:underline"
-                        >
-                          {project.name}
-                        </Link>
-                        <p className="text-xs text-muted-foreground line-clamp-1">
-                          {project.description}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell>{project.clientName}</TableCell>
-                    <TableCell>{project.managerName}</TableCell>
-                    <TableCell>
-                      <ProjectStatusBadge status={project.status} />
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Progress value={project.progress} className="min-w-24 flex-1" />
-                        <span className="w-8 text-right text-xs tabular-nums">
-                          {project.progress}%
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <PriorityBadge priority={project.priority} />
-                    </TableCell>
-                    <TableCell className="tabular-nums text-muted-foreground">
-                      {formatShortDate(project.dueDate)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            render={
-                              <Button size="icon-sm" variant="outline" />
-                            }
+                {filtered.map((project) => {
+                  const count = milestoneCounts.get(project.id) ?? 0;
+                  const cardActions = resolveProjectCardActions(
+                    project,
+                    count
+                  );
+                  return (
+                    <TableRow key={project.id}>
+                      <TableCell>
+                        <div>
+                          <Link
+                            href={`/projects/${project.id}`}
+                            className="font-medium text-foreground hover:text-primary hover:underline"
                           >
-                            <MoreHorizontal className="size-4" />
-                            <span className="sr-only">Project actions</span>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => setEditingProject(project)}
+                            {project.name}
+                          </Link>
+                          <p className="text-xs text-muted-foreground line-clamp-1">
+                            {project.description}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>{project.clientName}</TableCell>
+                      <TableCell>{project.managerName}</TableCell>
+                      <TableCell>
+                        <ProjectStatusBadge status={project.status} />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Progress
+                            value={project.progress}
+                            className="min-w-24 flex-1"
+                          />
+                          <span className="w-8 text-right text-xs tabular-nums">
+                            {project.progress}%
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <PriorityBadge priority={project.priority} />
+                      </TableCell>
+                      <TableCell className="tabular-nums text-muted-foreground">
+                        {count}
+                      </TableCell>
+                      <TableCell className="tabular-nums text-muted-foreground">
+                        {formatShortDate(project.dueDate)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {allowManage && cardActions.showAddMilestone ? (
+                            <Button
+                              size="sm"
+                              onClick={() => setMilestoneProject(project)}
+                              title="Add milestone"
                             >
-                              <Pencil className="size-3.5" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                handleArchive(project.id, project.name)
+                              <Plus data-icon="inline-start" />
+                              Add
+                            </Button>
+                          ) : null}
+                          {allowManage && cardActions.showManage ? (
+                            <Button
+                              size="icon-sm"
+                              variant="outline"
+                              title={cardActions.manageLabel}
+                              onClick={() => setManageProject(project)}
+                            >
+                              <Settings2 className="size-3.5" />
+                              <span className="sr-only">
+                                {cardActions.manageLabel}
+                              </span>
+                            </Button>
+                          ) : null}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger
+                              render={
+                                <Button size="icon-sm" variant="outline" />
                               }
                             >
-                              <Archive className="size-3.5" />
-                              Archive
-                            </DropdownMenuItem>
-                            {allowDelete ? (
-                              <>
-                                <DropdownMenuSeparator />
+                              <MoreHorizontal className="size-4" />
+                              <span className="sr-only">Project actions</span>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  router.push(`/projects/${project.id}`)
+                                }
+                              >
+                                Open Project
+                              </DropdownMenuItem>
+                              {allowManage && cardActions.showAddMilestone ? (
                                 <DropdownMenuItem
-                                  variant="destructive"
-                                  onClick={() => setDeletingProject(project)}
+                                  onClick={() => setMilestoneProject(project)}
                                 >
-                                  <Trash2 className="size-3.5" />
-                                  Delete permanently
+                                  <Plus className="size-3.5" />
+                                  Add Milestone
                                 </DropdownMenuItem>
-                              </>
-                            ) : null}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                              ) : null}
+                              {allowManage ? (
+                                <DropdownMenuItem
+                                  onClick={() => setManageProject(project)}
+                                >
+                                  <Settings2 className="size-3.5" />
+                                  Manage Milestones
+                                </DropdownMenuItem>
+                              ) : null}
+                              {allowManage ? (
+                                <DropdownMenuItem
+                                  onClick={() => setEditingProject(project)}
+                                >
+                                  <Pencil className="size-3.5" />
+                                  Edit Project
+                                </DropdownMenuItem>
+                              ) : null}
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  router.push(
+                                    `/projects/${project.id}?tab=activity`
+                                  )
+                                }
+                              >
+                                View Activity
+                              </DropdownMenuItem>
+                              {allowManage ? (
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleArchive(project.id, project.name)
+                                  }
+                                >
+                                  <Archive className="size-3.5" />
+                                  Archive Project
+                                </DropdownMenuItem>
+                              ) : null}
+                              {allowDelete ? (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onClick={() =>
+                                      setDeletingProject(project)
+                                    }
+                                  >
+                                    <Trash2 className="size-3.5" />
+                                    Delete Project
+                                  </DropdownMenuItem>
+                                </>
+                              ) : null}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -286,10 +402,12 @@ export function ProjectsView() {
           <p className="mt-1 text-sm text-muted-foreground">
             Try another filter or create a new project.
           </p>
-          <Button className="mt-4" onClick={() => setCreateOpen(true)}>
-            <Plus data-icon="inline-start" />
-            Create project
-          </Button>
+          {allowManage ? (
+            <Button className="mt-4" onClick={() => setCreateOpen(true)}>
+              <Plus data-icon="inline-start" />
+              Create project
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
@@ -306,6 +424,20 @@ export function ProjectsView() {
         open={Boolean(deletingProject)}
         onOpenChange={(open) => {
           if (!open) setDeletingProject(null);
+        }}
+      />
+      <AddMilestoneDialog
+        project={milestoneProject}
+        open={Boolean(milestoneProject)}
+        onOpenChange={(open) => {
+          if (!open) setMilestoneProject(null);
+        }}
+      />
+      <ManageMilestonesSheet
+        project={manageProject}
+        open={Boolean(manageProject)}
+        onOpenChange={(open) => {
+          if (!open) setManageProject(null);
         }}
       />
     </div>

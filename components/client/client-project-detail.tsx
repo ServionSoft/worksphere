@@ -10,6 +10,8 @@ import { SectionCard } from "@/components/shared/section-card";
 import { ProjectStatusBadge } from "@/components/shared/status-badge";
 import { MilestoneStatusBadge } from "@/components/shared/milestone-badge";
 import { MilestoneReviewForm } from "@/components/client/milestone-review-form";
+import { MilestoneAttachmentsPanel } from "@/components/projects/milestone-attachments-panel";
+import { SubmissionDeliverables } from "@/components/shared/submission-deliverables";
 import { useRequiredAuth } from "@/lib/auth-store";
 import { formatCurrency, formatDate, formatShortDate } from "@/lib/format";
 import {
@@ -251,24 +253,47 @@ export function ClientProjectDetail({ projectId }: { projectId: string }) {
         </TabsContent>
 
         <TabsContent value="deliverables" className="mt-4">
-          <SectionCard title="Deliverables" bodyClassName="p-0">
-            <ul className="divide-y divide-border">
-              {approvals.map((item) => (
-                <li key={item.id} className="px-5 py-3">
-                  <p className="text-sm font-medium">{item.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    v{item.version} · {clientDeliverableDisplayLabel(item)} ·{" "}
-                    {formatShortDate(item.submittedAt)}
-                  </p>
-                </li>
-              ))}
-              {approvals.length === 0 ? (
-                <li className="px-5 py-8 text-center text-sm text-muted-foreground">
-                  No deliverables ready for you yet. Admin must approve first.
-                </li>
-              ) : null}
-            </ul>
-          </SectionCard>
+          <div className="flex flex-col gap-4">
+            <SectionCard title="Authorized submissions" bodyClassName="p-0">
+              <ul className="divide-y divide-border">
+                {approvals.map((item) => (
+                  <li key={item.id} className="px-5 py-3">
+                    <p className="text-sm font-medium">{item.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      v{item.version} · {clientDeliverableDisplayLabel(item)} ·{" "}
+                      {formatShortDate(item.submittedAt)}
+                    </p>
+                    <SubmissionDeliverables
+                      files={item.files}
+                      repoUrl={item.repoUrl}
+                      deployUrl={item.deployUrl}
+                      designUrl={item.designUrl}
+                      testingNotes={item.testingNotes}
+                      compact
+                    />
+                  </li>
+                ))}
+                {approvals.length === 0 ? (
+                  <li className="px-5 py-8 text-center text-sm text-muted-foreground">
+                    No deliverables ready for you yet. Admin must approve first.
+                  </li>
+                ) : null}
+              </ul>
+            </SectionCard>
+
+            {projectMilestones.map((m) =>
+              workspace?.id ? (
+                <MilestoneAttachmentsPanel
+                  key={m.id}
+                  workspaceId={workspace.id}
+                  milestoneId={m.id}
+                  readOnly
+                  compact
+                  title={`${m.title} — client-visible files`}
+                />
+              ) : null
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="approvals" className="mt-4">

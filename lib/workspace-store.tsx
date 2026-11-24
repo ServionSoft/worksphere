@@ -277,7 +277,7 @@ interface WorkspaceStoreValue {
     >,
     note?: string
   ) => void;
-  addMilestone: (milestone: Milestone) => void;
+  addMilestone: (milestone: Milestone) => Promise<Milestone>;
   updateMilestone: (id: string, patch: Partial<Milestone>) => void;
   updateMilestoneStatus: (milestoneId: string, status: MilestoneStatus) => void;
   deleteMilestone: (id: string) => void;
@@ -1447,9 +1447,10 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const addMilestone = useCallback((milestone: Milestone) => {
+  const addMilestone = useCallback(async (milestone: Milestone) => {
     setMilestones((prev) => [milestone, ...prev]);
-    runApi(async () => {
+    if (!isApiDataSource()) return milestone;
+    try {
       const remote = await createApiMilestone(
         workspaceIdRef.current,
         milestone
@@ -1457,7 +1458,11 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       setMilestones((prev) =>
         prev.map((m) => (m.id === milestone.id ? remote : m))
       );
-    }, "Create milestone");
+      return remote;
+    } catch (err) {
+      setMilestones((prev) => prev.filter((m) => m.id !== milestone.id));
+      throw err;
+    }
   }, []);
 
   const updateMilestone = useCallback(
