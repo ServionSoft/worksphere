@@ -134,6 +134,12 @@ export interface Task {
   requiresClientApproval?: boolean;
   authorizedForClient?: boolean;
   clientApprovalStatus?: TaskClientApprovalStatus;
+  extensionRequest?: {
+    id?: string;
+    requestedDueDate: string;
+    reason: string;
+    status: "pending" | "approved" | "rejected";
+  };
 }
 
 export type MilestonePlanStatus = "suggested" | "approved" | "archived";

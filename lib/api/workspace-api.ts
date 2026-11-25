@@ -809,7 +809,7 @@ export function resolveApiExtension(
   assignmentId: string,
   decision: "approved" | "rejected"
 ) {
-  return apiFetch<DeveloperAssignment>(
+  return apiFetch<{ id: string; status: string; assignmentId: string }>(
     `/api/workspaces/${workspaceId}/assignments/${assignmentId}/extensions/resolve`,
     {
       method: "POST",
@@ -817,6 +817,41 @@ export function resolveApiExtension(
       body: JSON.stringify({ status: decision }),
     }
   );
+}
+
+export function requestApiTaskExtension(
+  workspaceId: string,
+  taskId: string,
+  requestedDueDate: string,
+  reason: string
+) {
+  return apiFetch<{
+    id: string;
+    requestedDueDate: string;
+    reason: string;
+    status: string;
+    task: import("@/lib/types").Task;
+  }>(`/api/workspaces/${workspaceId}/tasks/${taskId}/extensions`, {
+    method: "POST",
+    workspaceId,
+    body: JSON.stringify({ requestedDueDate, reason }),
+  });
+}
+
+export function resolveApiTaskExtension(
+  workspaceId: string,
+  taskId: string,
+  decision: "approved" | "rejected"
+) {
+  return apiFetch<{
+    id: string;
+    status: string;
+    task: import("@/lib/types").Task;
+  }>(`/api/workspaces/${workspaceId}/tasks/${taskId}/extensions/resolve`, {
+    method: "POST",
+    workspaceId,
+    body: JSON.stringify({ status: decision }),
+  });
 }
 
 export function createApiWorkSubmission(

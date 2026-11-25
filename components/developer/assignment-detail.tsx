@@ -10,16 +10,10 @@ import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SectionCard } from "@/components/shared/section-card";
+import { DeadlineMeta } from "@/components/shared/deadline-badge";
 import { MilestoneAttachmentsPanel } from "@/components/projects/milestone-attachments-panel";
+import { RequestDeadlineExtensionDialog } from "@/components/shared/request-deadline-extension-dialog";
 import { SubmissionDeliverables } from "@/components/shared/submission-deliverables";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { useRequiredAuth } from "@/lib/auth-store";
 import { formatCurrency, formatDate, formatShortDate } from "@/lib/format";
 import { isApiDataSource } from "@/lib/data-source";
@@ -83,8 +77,6 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
   const [deployUrl, setDeployUrl] = useState("");
   const [msg, setMsg] = useState("");
   const [extensionOpen, setExtensionOpen] = useState(false);
-  const [extensionDate, setExtensionDate] = useState("");
-  const [extensionReason, setExtensionReason] = useState("");
   const [uploads, setUploads] = useState<UploadedDeliverable[]>([]);
   const [uploading, setUploading] = useState(false);
 
@@ -204,12 +196,37 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
           ) : (
             "Independent"
           )}{" "}
-          · {formatCurrency(assignment.budget, assignment.currency)} ·{" "}
-          {formatDate(assignment.startDate)} – {formatDate(assignment.deadline)}
+          · {formatCurrency(assignment.budget, assignment.currency)}
           {linkedMilestone
             ? ` · Milestone: ${linkedMilestone.title}`
             : null}
         </p>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <DeadlineMeta
+            deadline={assignment.deadline}
+            originalDeadline={assignment.originalDeadline}
+            completed={
+              assignment.status === "completed" ||
+              assignment.status === "approved"
+            }
+          />
+          {assignment.extensionRequest?.status === "pending" ? (
+            <span className="text-xs text-amber-800">
+              Extension pending →{" "}
+              {formatShortDate(assignment.extensionRequest.requestedDeadline)}
+            </span>
+          ) : null}
+          {workAllowed ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={assignment.extensionRequest?.status === "pending"}
+              onClick={() => setExtensionOpen(true)}
+            >
+              Request extension
+            </Button>
+          ) : null}
+        </div>
         <div className="mt-4">
           <Progress value={assignment.progress} />
         </div>
@@ -516,12 +533,11 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
               className="mt-3"
               size="sm"
               variant="outline"
-              disabled={!workAllowed}
-              onClick={() => {
-                setExtensionDate(assignment.deadline);
-                setExtensionReason("");
-                setExtensionOpen(true);
-              }}
+              disabled={
+                !workAllowed ||
+                assignment.extensionRequest?.status === "pending"
+              }
+              onClick={() => setExtensionOpen(true)}
             >
               Request deadline extension
             </Button>
@@ -529,60 +545,14 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
         </TabsContent>
       </Tabs>
 
-      <Dialog open={extensionOpen} onOpenChange={setExtensionOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Request deadline extension</DialogTitle>
-            <DialogDescription>
-              Propose a new deadline and reason. An administrator must authorize the change.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <div>
-              <label className="text-xs font-medium">Requested deadline</label>
-              <Input
-                className="mt-1"
-                type="date"
-                value={extensionDate}
-                onChange={(e) => setExtensionDate(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium">Reason</label>
-              <Textarea
-                className="mt-1"
-                value={extensionReason}
-                onChange={(e) => setExtensionReason(e.target.value)}
-                placeholder="Why do you need more time?"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setExtensionOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (!extensionDate || !extensionReason.trim()) {
-                  toast.error("Provide a date and reason");
-                  return;
-                }
-                requestExtension(
-                  assignment.id,
-                  extensionDate,
-                  extensionReason.trim()
-                );
-                setExtensionOpen(false);
-                toast.success("Extension request sent", {
-                  description: "Admin must authorize deadline changes.",
-                });
-              }}
-            >
-              Submit request
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RequestDeadlineExtensionDialog
+        open={extensionOpen}
+        onOpenChange={setExtensionOpen}
+        currentDeadline={assignment.deadline}
+        onSubmit={(date, reason) =>
+          requestExtension(assignment.id, date, reason)
+        }
+      />
     </div>
   );
 }

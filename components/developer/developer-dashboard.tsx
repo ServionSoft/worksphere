@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/shared/section-card";
+import { DeadlineBadge } from "@/components/shared/deadline-badge";
 import { useRequiredAuth } from "@/lib/auth-store";
 import { formatCurrency, formatShortDate } from "@/lib/format";
 import { developerProjects } from "@/lib/portal-selectors";
@@ -243,20 +244,25 @@ export function DeveloperDashboard() {
                     {a.progress}%
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Due {formatShortDate(a.deadline)} · {a.status.replace("_", " ")}
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <DeadlineBadge
+                    deadline={a.deadline}
+                    completed={
+                      a.status === "completed" || a.status === "approved"
+                    }
+                  />
+                  <span className="capitalize">
+                    {a.status.replace("_", " ")}
+                  </span>
                   {a.projectId ? (
-                    <>
-                      {" · "}
-                      <Link
-                        href={`/developer/projects/${a.projectId}`}
-                        className="text-primary hover:underline"
-                      >
-                        {a.projectName ?? "Project"}
-                      </Link>
-                    </>
+                    <Link
+                      href={`/developer/projects/${a.projectId}`}
+                      className="text-primary hover:underline"
+                    >
+                      {a.projectName ?? "Project"}
+                    </Link>
                   ) : null}
-                </p>
+                </div>
               </li>
             ))}
           </ul>

@@ -7,11 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SectionCard } from "@/components/shared/section-card";
+import { DeadlineBadge, DeadlineMeta } from "@/components/shared/deadline-badge";
 import { ProjectStatusBadge, TaskStatusBadge } from "@/components/shared/status-badge";
 import { MilestoneStatusBadge } from "@/components/shared/milestone-badge";
 import { PriorityBadge } from "@/components/shared/priority-badge";
+import { RequestDeadlineExtensionDialog } from "@/components/shared/request-deadline-extension-dialog";
 import { ProjectGantt } from "@/components/projects/detail/project-gantt";
 import { useRequiredAuth } from "@/lib/auth-store";
+import { getDeadlineState } from "@/lib/deadline";
 import { formatDate, formatShortDate } from "@/lib/format";
 import {
   developerAssignments,
@@ -53,9 +56,11 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
     activity,
     workSubmissions,
     updateTaskStatus,
+    requestTaskExtension,
   } = useWorkspaceStore();
   const [tab, setTab] = useState("overview");
   const [submitTask, setSubmitTask] = useState<Task | null>(null);
+  const [extTask, setExtTask] = useState<Task | null>(null);
 
   const allowed = developerProjects(projects, assignments, user, tasks);
   const project = allowed.find((p) => p.id === projectId);
@@ -234,28 +239,51 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
                   const milestone = projectMilestones.find(
                     (m) => m.id === task.milestoneId
                   );
+                  const due = getDeadlineState(task.dueDate, {
+                    completed: task.status === "done",
+                  });
                   return (
-                    <li key={task.id} className="px-5 py-4">
+                    <li
+                      key={task.id}
+                      className={`px-5 py-4 ${
+                        due.isOverdue
+                          ? "bg-red-50/40"
+                          : due.isDueSoon
+                            ? "bg-amber-50/40"
+                            : ""
+                      }`}
+                    >
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-sm font-medium">{task.title}</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-medium">{task.title}</p>
+                            <DeadlineBadge
+                              deadline={task.dueDate}
+                              completed={task.status === "done"}
+                            />
+                          </div>
                           <p className="mt-0.5 text-xs text-muted-foreground">
                             {task.description}
                           </p>
-                          {(task.startDate ||
-                            task.dueDate ||
-                            milestone) && (
-                            <p className="mt-1 text-[11px] text-muted-foreground">
-                              {[
-                                task.startDate || task.dueDate
-                                  ? `${formatShortDate(task.startDate)} – ${formatShortDate(task.dueDate)}`
-                                  : null,
-                                milestone?.title,
-                              ]
-                                .filter(Boolean)
-                                .join(" · ")}
+                          <DeadlineMeta
+                            className="mt-1"
+                            deadline={task.dueDate}
+                            completed={task.status === "done"}
+                            compact
+                          />
+                          {milestone ? (
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                              Milestone: {milestone.title}
                             </p>
-                          )}
+                          ) : null}
+                          {task.extensionRequest?.status === "pending" ? (
+                            <p className="mt-1 text-xs text-amber-800">
+                              Extension pending →{" "}
+                              {formatShortDate(
+                                task.extensionRequest.requestedDueDate
+                              )}
+                            </p>
+                          ) : null}
                         </div>
                         <div className="flex items-center gap-2">
                           <PriorityBadge priority={task.priority} />
@@ -298,6 +326,16 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
                                 Awaiting internal review
                               </span>
                             )}
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              disabled={
+                                task.extensionRequest?.status === "pending"
+                              }
+                              onClick={() => setExtTask(task)}
+                            >
+                              Request extension
+                            </Button>
                           </div>
                           <TaskSubmissionHistory taskId={task.id} />
                         </div>
@@ -668,6 +706,18 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
         open={Boolean(submitTask)}
         onOpenChange={(open) => {
           if (!open) setSubmitTask(null);
+        }}
+      />
+      <RequestDeadlineExtensionDialog
+        open={Boolean(extTask)}
+        onOpenChange={(open) => {
+          if (!open) setExtTask(null);
+        }}
+        currentDeadline={extTask?.dueDate}
+        onSubmit={(date, reason) => {
+          if (!extTask) return;
+          requestTaskExtension(extTask.id, date, reason);
+          setExtTask(null);
         }}
       />
     </div>

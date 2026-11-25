@@ -3,12 +3,16 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { PageHeader } from "@/components/shared/page-header";
+import { DeadlineBadge, DeadlineMeta } from "@/components/shared/deadline-badge";
 import { PriorityBadge } from "@/components/shared/priority-badge";
+import { RequestDeadlineExtensionDialog } from "@/components/shared/request-deadline-extension-dialog";
 import { TaskStatusBadge } from "@/components/shared/status-badge";
 import { useRequiredAuth } from "@/lib/auth-store";
+import { getDeadlineState } from "@/lib/deadline";
 import { formatCurrency, formatShortDate } from "@/lib/format";
 import {
   developerDirectTasks,
@@ -16,6 +20,7 @@ import {
 } from "@/lib/portal-selectors";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import type { AssignmentStatus } from "@/lib/portal-types";
+import type { Task } from "@/lib/types";
 
 const tabs: Array<"all" | AssignmentStatus | "direct"> = [
   "all",
@@ -31,8 +36,19 @@ const tabs: Array<"all" | AssignmentStatus | "direct"> = [
 
 export function DeveloperAssignmentsPage() {
   const { user } = useRequiredAuth();
-  const { assignments, tasks, projects } = useWorkspaceStore();
+  const {
+    assignments,
+    tasks,
+    projects,
+    requestExtension,
+    requestTaskExtension,
+  } = useWorkspaceStore();
   const [tab, setTab] = useState<(typeof tabs)[number]>("all");
+  const [extTarget, setExtTarget] = useState<
+    | { kind: "assignment"; id: string; deadline: string }
+    | { kind: "task"; id: string; deadline: string }
+    | null
+  >(null);
   const mine = developerAssignments(assignments, user);
   const directTasks = developerDirectTasks(tasks, user);
 
@@ -65,12 +81,21 @@ export function DeveloperAssignmentsPage() {
 
       <div className="grid gap-3">
         {showDirect
-          ? directTasks.map((task) => {
+          ? directTasks.map((task: Task) => {
               const project = projects.find((p) => p.id === task.projectId);
+              const due = getDeadlineState(task.dueDate, {
+                completed: task.status === "done",
+              });
+              const overdueBorder =
+                due.isOverdue && "border-red-300 bg-red-50/30";
+              const soonBorder =
+                due.isDueSoon && !due.isOverdue && "border-amber-300 bg-amber-50/30";
               return (
                 <div
                   key={`task-${task.id}`}
-                  className="rounded-xl border border-border bg-card p-4 transition-shadow hover:shadow-sm"
+                  className={`rounded-xl border bg-card p-4 transition-shadow hover:shadow-sm ${
+                    overdueBorder || soonBorder || "border-border"
+                  }`}
                 >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -82,17 +107,52 @@ export function DeveloperAssignmentsPage() {
                           {task.title}
                         </Link>
                         <Badge variant="outline">Direct task</Badge>
+                        <DeadlineBadge
+                          deadline={task.dueDate}
+                          completed={task.status === "done"}
+                        />
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        {project?.name ?? task.projectName} · Due{" "}
-                        {formatShortDate(task.dueDate)}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {project?.name ?? task.projectName}
                       </p>
-                      <Link
-                        href={`/developer/projects/${task.projectId}`}
-                        className="mt-1 inline-block text-[11px] font-medium text-primary hover:underline"
-                      >
-                        View project · timeline & milestones
-                      </Link>
+                      <DeadlineMeta
+                        className="mt-1"
+                        deadline={task.dueDate}
+                        completed={task.status === "done"}
+                        compact
+                      />
+                      {task.extensionRequest?.status === "pending" ? (
+                        <p className="mt-1 text-xs text-amber-800">
+                          Extension pending →{" "}
+                          {formatShortDate(task.extensionRequest.requestedDueDate)}
+                        </p>
+                      ) : null}
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/developer/projects/${task.projectId}`}
+                          className="text-[11px] font-medium text-primary hover:underline"
+                        >
+                          View project · timeline & milestones
+                        </Link>
+                        {task.status !== "done" ? (
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            disabled={
+                              task.extensionRequest?.status === "pending"
+                            }
+                            onClick={() =>
+                              setExtTarget({
+                                kind: "task",
+                                id: task.id,
+                                deadline: task.dueDate,
+                              })
+                            }
+                          >
+                            Request extension
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <PriorityBadge priority={task.priority} />
@@ -107,13 +167,23 @@ export function DeveloperAssignmentsPage() {
         {showMarketplace
           ? filteredMarketplace.map((a) => {
               const pending = a.status === "pending_confirmation";
+              const completed =
+                a.status === "completed" || a.status === "approved";
+              const due = getDeadlineState(a.deadline, { completed });
+              const overdueBorder =
+                !pending && due.isOverdue && "border-red-300 bg-red-50/30";
+              const soonBorder =
+                !pending &&
+                due.isDueSoon &&
+                !due.isOverdue &&
+                "border-amber-300 bg-amber-50/30";
               return (
                 <div
                   key={a.id}
                   className={`rounded-xl border bg-card p-4 transition-shadow hover:shadow-sm ${
                     pending
                       ? "border-amber-300 bg-amber-50/40"
-                      : "border-border"
+                      : overdueBorder || soonBorder || "border-border"
                   }`}
                 >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -126,25 +196,63 @@ export function DeveloperAssignmentsPage() {
                           {a.title}
                         </Link>
                         <Badge variant="secondary">Marketplace</Badge>
+                        <DeadlineBadge
+                          deadline={a.deadline}
+                          completed={completed}
+                        />
                       </div>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {a.projectName ?? "Independent"} ·{" "}
-                        {formatCurrency(a.budget, a.currency)} · Due{" "}
-                        {formatShortDate(a.deadline)}
+                        {formatCurrency(a.budget, a.currency)}
                       </p>
+                      <DeadlineMeta
+                        className="mt-1"
+                        deadline={a.deadline}
+                        originalDeadline={a.originalDeadline}
+                        completed={completed}
+                        compact
+                      />
                       {pending ? (
                         <p className="mt-1 text-xs text-amber-800">
                           Waiting for admin confirmation — submit stays locked.
                         </p>
                       ) : null}
-                      {a.projectId ? (
-                        <Link
-                          href={`/developer/projects/${a.projectId}`}
-                          className="mt-1 inline-block text-[11px] font-medium text-primary hover:underline"
-                        >
-                          View project · timeline & milestones
-                        </Link>
+                      {a.extensionRequest?.status === "pending" ? (
+                        <p className="mt-1 text-xs text-amber-800">
+                          Extension pending →{" "}
+                          {formatShortDate(
+                            a.extensionRequest.requestedDeadline
+                          )}
+                        </p>
                       ) : null}
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {a.projectId ? (
+                          <Link
+                            href={`/developer/projects/${a.projectId}`}
+                            className="text-[11px] font-medium text-primary hover:underline"
+                          >
+                            View project · timeline & milestones
+                          </Link>
+                        ) : null}
+                        {!pending && !completed ? (
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            disabled={
+                              a.extensionRequest?.status === "pending"
+                            }
+                            onClick={() =>
+                              setExtTarget({
+                                kind: "assignment",
+                                id: a.id,
+                                deadline: a.deadline,
+                              })
+                            }
+                          >
+                            Request extension
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                     {pending ? (
                       <Badge
@@ -179,6 +287,23 @@ export function DeveloperAssignmentsPage() {
           </div>
         ) : null}
       </div>
+
+      <RequestDeadlineExtensionDialog
+        open={Boolean(extTarget)}
+        onOpenChange={(open) => {
+          if (!open) setExtTarget(null);
+        }}
+        currentDeadline={extTarget?.deadline}
+        onSubmit={(date, reason) => {
+          if (!extTarget) return;
+          if (extTarget.kind === "assignment") {
+            requestExtension(extTarget.id, date, reason);
+          } else {
+            requestTaskExtension(extTarget.id, date, reason);
+          }
+          setExtTarget(null);
+        }}
+      />
     </div>
   );
 }

@@ -198,6 +198,7 @@ export interface DeveloperAssignment {
   currency: string;
   startDate: string;
   deadline: string;
+  originalDeadline?: string;
   status: AssignmentStatus;
   progress: number;
   checklist: Array<{ id: string; label: string; done: boolean }>;
@@ -206,6 +207,7 @@ export interface DeveloperAssignment {
   deadlineLocked?: boolean;
   quotationId?: string;
   extensionRequest?: {
+    id?: string;
     requestedDeadline: string;
     reason: string;
     status: "pending" | "approved" | "rejected";

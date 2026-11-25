@@ -106,6 +106,8 @@ export function MarketplaceAdmin() {
     confirmAssignment,
     rejectAssignment,
     resolveExtension,
+    resolveTaskExtension,
+    tasks,
   } = useWorkspaceStore();
 
   const [tab, setTab] = useState("opportunities");
@@ -130,6 +132,9 @@ export function MarketplaceAdmin() {
   );
   const extensionRequests = assignments.filter(
     (a) => a.extensionRequest?.status === "pending"
+  );
+  const taskExtensionRequests = tasks.filter(
+    (t) => t.extensionRequest?.status === "pending"
   );
 
   const oppById = useMemo(() => {
@@ -347,9 +352,14 @@ export function MarketplaceAdmin() {
           </TabsTrigger>
           <TabsTrigger value="assignments">
             Assignments
-            {pendingAssignments.length + extensionRequests.length > 0 ? (
+            {pendingAssignments.length +
+              extensionRequests.length +
+              taskExtensionRequests.length >
+            0 ? (
               <Badge variant="secondary" className="ml-1">
-                {pendingAssignments.length + extensionRequests.length}
+                {pendingAssignments.length +
+                  extensionRequests.length +
+                  taskExtensionRequests.length}
               </Badge>
             ) : null}
           </TabsTrigger>
@@ -813,7 +823,7 @@ export function MarketplaceAdmin() {
               </SectionCard>
             ) : null}
 
-            {extensionRequests.length > 0 ? (
+            {extensionRequests.length + taskExtensionRequests.length > 0 ? (
               <SectionCard
                 title="Extension requests"
                 description="Approve or reject deadline changes"
@@ -824,9 +834,13 @@ export function MarketplaceAdmin() {
                       key={assignment.id}
                       className="rounded-lg border border-border px-3 py-3"
                     >
-                      <p className="font-medium">{assignment.title}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{assignment.title}</p>
+                        <Badge variant="secondary">Assignment</Badge>
+                      </div>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        {assignment.developerName} requests{" "}
+                        {assignment.developerName} · current{" "}
+                        {formatShortDate(assignment.deadline)} →{" "}
                         {formatShortDate(
                           assignment.extensionRequest!.requestedDeadline
                         )}
@@ -850,6 +864,49 @@ export function MarketplaceAdmin() {
                           onClick={() => {
                             resolveExtension(assignment.id, "rejected");
                             toast.success("Extension rejected");
+                          }}
+                        >
+                          Reject extension
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {taskExtensionRequests.map((task) => (
+                    <div
+                      key={task.id}
+                      className="rounded-lg border border-border px-3 py-3"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{task.title}</p>
+                        <Badge variant="outline">Task</Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {task.assigneeName || "Assignee"} ·{" "}
+                        {task.projectName} · current{" "}
+                        {formatShortDate(task.dueDate)} →{" "}
+                        {formatShortDate(
+                          task.extensionRequest!.requestedDueDate
+                        )}
+                      </p>
+                      <p className="mt-1 text-sm">
+                        {task.extensionRequest!.reason}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            resolveTaskExtension(task.id, "approved");
+                            toast.success("Task extension approved");
+                          }}
+                        >
+                          Approve extension
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            resolveTaskExtension(task.id, "rejected");
+                            toast.success("Task extension rejected");
                           }}
                         >
                           Reject extension

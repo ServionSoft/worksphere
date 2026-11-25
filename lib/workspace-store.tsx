@@ -61,7 +61,9 @@ import {
   registerApiDeveloper,
   rejectApiAssignment,
   requestApiExtension,
+  requestApiTaskExtension,
   resolveApiExtension,
+  resolveApiTaskExtension,
   reviewApiWorkSubmission,
   saveApiOpportunity,
   sendApiMessage,
@@ -352,6 +354,15 @@ interface WorkspaceStoreValue {
   ) => void;
   resolveExtension: (
     assignmentId: string,
+    decision: "approved" | "rejected"
+  ) => void;
+  requestTaskExtension: (
+    taskId: string,
+    requestedDueDate: string,
+    reason: string
+  ) => void;
+  resolveTaskExtension: (
+    taskId: string,
     decision: "approved" | "rejected"
   ) => void;
   addWorkSubmission: (
@@ -2272,6 +2283,92 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const requestTaskExtension = useCallback(
+    (taskId: string, requestedDueDate: string, reason: string) => {
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                extensionRequest: {
+                  requestedDueDate,
+                  reason,
+                  status: "pending",
+                },
+              }
+            : t
+        )
+      );
+      notify({
+        portal: "admin",
+        userId: currentUser.id,
+        title: "Task deadline extension requested",
+        body: reason,
+        href: "/marketplace",
+      });
+      runApi(
+        () =>
+          requestApiTaskExtension(
+            workspaceIdRef.current,
+            taskId,
+            requestedDueDate,
+            reason
+          ).then((res) => {
+            if (res?.task) {
+              setTasks((prev) =>
+                prev.map((t) => (t.id === taskId ? { ...t, ...res.task } : t))
+              );
+            }
+          }),
+        "Request task extension"
+      );
+    },
+    [notify]
+  );
+
+  const resolveTaskExtension = useCallback(
+    (taskId: string, decision: "approved" | "rejected") => {
+      setTasks((prev) =>
+        prev.map((t) => {
+          if (t.id !== taskId || !t.extensionRequest) return t;
+          if (decision === "approved") {
+            return {
+              ...t,
+              dueDate: t.extensionRequest.requestedDueDate,
+              extensionRequest: {
+                ...t.extensionRequest,
+                status: "approved",
+              },
+            };
+          }
+          return {
+            ...t,
+            extensionRequest: {
+              ...t.extensionRequest,
+              status: "rejected",
+            },
+          };
+        })
+      );
+      runApi(
+        () =>
+          resolveApiTaskExtension(
+            workspaceIdRef.current,
+            taskId,
+            decision
+          ).then((res) => {
+            if (res?.task) {
+              setTasks((prev) =>
+                prev.map((t) => (t.id === taskId ? { ...t, ...res.task } : t))
+              );
+            }
+          }),
+        "Resolve task extension"
+      );
+    },
+    []
+  );
+
   const addWorkSubmission = useCallback(
     (
       submission: Omit<
@@ -3235,6 +3332,8 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       updateAssignment,
       requestExtension,
       resolveExtension,
+      requestTaskExtension,
+      resolveTaskExtension,
       addWorkSubmission,
       reviewWorkSubmission,
       clientReviewWork,
@@ -3328,6 +3427,8 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       updateAssignment,
       requestExtension,
       resolveExtension,
+      requestTaskExtension,
+      resolveTaskExtension,
       addWorkSubmission,
       reviewWorkSubmission,
       clientReviewWork,
