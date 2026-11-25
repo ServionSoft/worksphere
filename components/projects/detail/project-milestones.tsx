@@ -248,7 +248,15 @@ export function ProjectMilestones({
     try {
       const remote = await approveApiMilestone(workspace.id, m.id);
       updateMilestone(m.id, remote);
-      toast.success("Milestone approved for production");
+      reload();
+      const stillSuggested = items.some(
+        (x) => x.id !== m.id && x.planStatus === "suggested"
+      );
+      toast.success(
+        stillSuggested
+          ? "Milestone approved — approve remaining suggested milestones, then Approve production plan"
+          : "Milestone approved — if the plan is still draft, open Production Plan → Approve"
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Approve failed");
     } finally {
@@ -260,6 +268,19 @@ export function ProjectMilestones({
     if (!workspace?.id) return;
     if (m.planStatus !== "approved") {
       toast.error("Approve the milestone before publishing");
+      return;
+    }
+    if (
+      isApiDataSource() &&
+      project?.productionPlanStatus &&
+      project.productionPlanStatus !== "approved"
+    ) {
+      const suggestedLeft = items.some((x) => x.planStatus === "suggested");
+      toast.error(
+        suggestedLeft
+          ? "Approve every suggested milestone, then Approve production plan (Project → Production Plan)"
+          : "Approve the production plan before publishing (Project → Production Plan → Approve)"
+      );
       return;
     }
     if (!isApiDataSource()) {
@@ -277,7 +298,13 @@ export function ProjectMilestones({
         description: `Opportunity ${result.opportunityId.slice(0, 8)}…`,
       });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Publish failed");
+      const msg = e instanceof Error ? e.message : "Publish failed";
+      toast.error(msg, {
+        description:
+          msg.toLowerCase().includes("production plan")
+            ? "Open Project → Production Plan and click Approve production plan"
+            : undefined,
+      });
     } finally {
       setPublishBusy(false);
     }
@@ -356,6 +383,20 @@ export function ProjectMilestones({
         }
         bodyClassName="p-0"
       >
+        {isApiDataSource() &&
+        project?.productionPlanStatus &&
+        project.productionPlanStatus !== "approved" ? (
+          <div className="border-b border-amber-500/30 bg-amber-500/10 px-5 py-3 text-sm text-amber-950 dark:text-amber-100">
+            Marketplace publish needs an approved production plan.{" "}
+            <Link
+              href={`/projects/${projectId}?tab=production-plan`}
+              className="font-medium underline underline-offset-2"
+            >
+              Open Production Plan
+            </Link>{" "}
+            and click Approve after all milestones are approved.
+          </div>
+        ) : null}
         {items.length === 0 ? (
           <p className="px-5 py-10 text-center text-sm text-muted-foreground">
             No milestones yet. Paste scope on the Scope tab, generate with AI when
