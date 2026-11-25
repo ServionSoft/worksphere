@@ -105,6 +105,14 @@ export interface Project {
   objectives?: string;
   scopeText?: string;
   scopeDocumentId?: string | null;
+  contractType?:
+    | "fixed_price"
+    | "time_and_materials"
+    | "retainer"
+    | "hybrid";
+  productionPlanStatus?: "none" | "draft" | "approved";
+  productionPlanVersion?: number;
+  productionPlanApprovedAt?: string | null;
 }
 
 export type TaskClientApprovalStatus =
@@ -130,6 +138,12 @@ export interface Task {
   dependsOn: string[];
   milestoneId?: string | null;
   order: number;
+  acceptanceCriteria?: string;
+  requiredSkills?: string[];
+  estimatedHours?: number | null;
+  deliverables?: string[];
+  source?: "manual" | "ai";
+  adminEdited?: boolean;
   /** Parent project tasks default to client sign-off after admin. */
   requiresClientApproval?: boolean;
   authorizedForClient?: boolean;
@@ -177,6 +191,7 @@ export interface Milestone {
   marketplaceStatus?: MilestoneMarketplaceStatus;
   opportunityId?: string | null;
   source?: "manual" | "ai";
+  adminEdited?: boolean;
   approvedAt?: string | null;
   clientPrice?: number;
   developerBudget?: number;

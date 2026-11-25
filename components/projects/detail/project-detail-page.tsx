@@ -21,6 +21,7 @@ import { ProjectTaskTable } from "@/components/projects/detail/project-task-tabl
 import { ProjectGantt } from "@/components/projects/detail/project-gantt";
 import { ProjectMilestones } from "@/components/projects/detail/project-milestones";
 import { ProjectScopeTab } from "@/components/projects/detail/project-scope-tab";
+import { ProductionPlanStudio } from "@/components/projects/detail/production-plan-studio";
 import { ProjectDocuments } from "@/components/projects/detail/project-documents";
 import { ProjectApprovals } from "@/components/projects/detail/project-approvals";
 import { ProjectActivity } from "@/components/projects/detail/project-activity";
@@ -226,6 +227,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
         <TabsList variant="line" className="w-full justify-start overflow-x-auto">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="scope">Scope</TabsTrigger>
+          <TabsTrigger value="production-plan">Production Plan</TabsTrigger>
           <TabsTrigger value="board">Board</TabsTrigger>
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
@@ -245,6 +247,9 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
         </TabsContent>
         <TabsContent value="scope" className="mt-4">
           <ProjectScopeTab project={project} />
+        </TabsContent>
+        <TabsContent value="production-plan" className="mt-4">
+          <ProductionPlanStudio project={project} />
         </TabsContent>
         <TabsContent value="board" className="mt-4">
           <ProjectKanban projectId={project.id} />

@@ -273,6 +273,7 @@ export function createApiProject(workspaceId: string, project: Project) {
       objectives: project.objectives,
       scopeText: project.scopeText,
       scopeDocumentId: project.scopeDocumentId,
+      contractType: project.contractType,
       clientId: project.clientId,
       managerProfileId: project.managerId || undefined,
       status: project.status,
@@ -303,6 +304,7 @@ export function patchApiProject(
         objectives: patch.objectives,
         scopeText: patch.scopeText,
         scopeDocumentId: patch.scopeDocumentId,
+        contractType: patch.contractType,
         clientId: patch.clientId,
         managerProfileId: patch.managerId,
         status: patch.status,
@@ -363,6 +365,11 @@ export function createApiTask(workspaceId: string, task: Task) {
       sortOrder: task.order,
       requiresClientApproval: task.requiresClientApproval,
       dependsOn: task.dependsOn,
+      acceptanceCriteria: task.acceptanceCriteria,
+      requiredSkills: task.requiredSkills,
+      estimatedHours: task.estimatedHours,
+      deliverables: task.deliverables,
+      source: task.source,
     }),
   });
 }
@@ -388,6 +395,10 @@ export function patchApiTask(
       sortOrder: patch.order,
       requiresClientApproval: patch.requiresClientApproval,
       dependsOn: patch.dependsOn,
+      acceptanceCriteria: patch.acceptanceCriteria,
+      requiredSkills: patch.requiredSkills,
+      estimatedHours: patch.estimatedHours,
+      deliverables: patch.deliverables,
     }),
   });
 }
@@ -577,7 +588,11 @@ export function publishApiMilestone(
 export function generateApiMilestones(
   workspaceId: string,
   projectId: string,
-  opts?: { scopeText?: string; persist?: boolean }
+  opts?: {
+    scopeText?: string;
+    persist?: boolean;
+    mode?: "append" | "replace_unedited";
+  }
 ) {
   return apiFetch<{
     provider: string;
@@ -590,6 +605,7 @@ export function generateApiMilestones(
       projectId,
       persist: opts?.persist !== false,
       scopeText: opts?.scopeText,
+      mode: opts?.mode ?? "append",
     }),
   });
 }
@@ -597,8 +613,135 @@ export function generateApiMilestones(
 export function fetchAiStatus() {
   return apiFetch<{
     milestoneGeneration: "available" | "unavailable";
+    taskGeneration?: "available" | "unavailable";
     provider: string | null;
   }>("/api/ai/status");
+}
+
+export function reorderApiMilestones(
+  workspaceId: string,
+  projectId: string,
+  orderedIds: string[]
+) {
+  return apiFetch<Milestone[]>(
+    `/api/workspaces/${workspaceId}/milestones/reorder`,
+    {
+      method: "POST",
+      workspaceId,
+      body: JSON.stringify({ projectId, orderedIds }),
+    }
+  );
+}
+
+export function duplicateApiMilestone(
+  workspaceId: string,
+  milestoneId: string
+) {
+  return apiFetch<Milestone>(
+    `/api/workspaces/${workspaceId}/milestones/${milestoneId}/duplicate`,
+    { method: "POST", workspaceId, body: "{}" }
+  );
+}
+
+export function approveApiProductionPlan(
+  workspaceId: string,
+  projectId: string,
+  milestoneIds?: string[]
+) {
+  return apiFetch<{
+    project: Project;
+    milestones: Milestone[];
+    approvedMilestoneCount: number;
+  }>(`/api/workspaces/${workspaceId}/production-plan/approve`, {
+    method: "POST",
+    workspaceId,
+    body: JSON.stringify({ projectId, milestoneIds }),
+  });
+}
+
+export function generateApiMilestoneTasks(
+  workspaceId: string,
+  milestoneId: string,
+  opts?: {
+    persist?: boolean;
+    replaceUnedited?: boolean;
+    mode?: "skip_if_present" | "replace_unedited";
+  }
+) {
+  return apiFetch<{
+    provider: string;
+    suggestions: unknown[];
+    tasks: Task[];
+    milestoneId: string;
+    projectId?: string;
+    skipped?: boolean;
+    reason?: string;
+    message?: string;
+    createdCount?: number;
+    existingAiTaskCount?: number;
+  }>(
+    `/api/workspaces/${workspaceId}/milestones/${milestoneId}/generate-tasks`,
+    {
+      method: "POST",
+      workspaceId,
+      body: JSON.stringify({
+        persist: opts?.persist !== false,
+        replaceUnedited: Boolean(opts?.replaceUnedited),
+        mode:
+          opts?.mode ??
+          (opts?.replaceUnedited ? "replace_unedited" : "skip_if_present"),
+      }),
+    }
+  );
+}
+
+export function generateApiAllProjectTasks(
+  workspaceId: string,
+  projectId: string,
+  opts?: { mode?: "skip_if_present" | "replace_unedited" }
+) {
+  return apiFetch<{
+    projectId: string;
+    mode: string;
+    milestoneCount: number;
+    generated: number;
+    skipped: number;
+    failed: number;
+    planApproved: boolean;
+    published: boolean;
+    results: Array<{
+      milestoneId: string;
+      title: string;
+      skipped?: boolean;
+      createdCount?: number;
+      error?: string;
+    }>;
+  }>(`/api/workspaces/${workspaceId}/production-plan/generate-all-tasks`, {
+    method: "POST",
+    workspaceId,
+    body: JSON.stringify({
+      projectId,
+      mode: opts?.mode ?? "skip_if_present",
+    }),
+  });
+}
+
+export function reorderApiPlanTasks(
+  workspaceId: string,
+  body: {
+    projectId: string;
+    milestoneId?: string;
+    orderedIds: string[];
+  }
+) {
+  return apiFetch<{ reordered: number }>(
+    `/api/workspaces/${workspaceId}/production-plan/reorder-tasks`,
+    {
+      method: "POST",
+      workspaceId,
+      body: JSON.stringify(body),
+    }
+  );
 }
 
 export function fetchMilestoneProfitability(
