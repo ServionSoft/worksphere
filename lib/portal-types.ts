@@ -194,6 +194,7 @@ export interface DeveloperAssignment {
   title: string;
   projectId?: string;
   projectName?: string;
+  milestoneId?: string;
   budget: number;
   currency: string;
   startDate: string;
@@ -297,16 +298,41 @@ export interface Invoice {
   milestoneTitle?: string;
 }
 
+export type PayoutStatus =
+  | "not_eligible"
+  | "pending_clearance"
+  | "on_hold"
+  | "eligible"
+  | "processing"
+  | "paid"
+  | "failed"
+  | "cancelled"
+  | "refunded";
+
 export interface EarningRecord {
   id: string;
   assignmentId: string;
   assignmentTitle: string;
+  milestoneId?: string | null;
   developerId: string;
   amount: number;
+  grossAmount?: number;
+  platformFee?: number;
+  processingFee?: number;
+  netAmount?: number;
   currency: string;
   status: PaymentStatus;
+  payoutStatus?: PayoutStatus | string;
   earnedAt: string;
+  approvedAt?: string;
+  availableAt?: string;
+  clearanceDays?: number;
   paidAt?: string;
+  provider?: string;
+  providerReference?: string;
+  failureReason?: string;
+  feePercentSnapshot?: number;
+  feeFixedSnapshot?: number;
 }
 
 export interface PortalNotification {

@@ -345,7 +345,7 @@ interface WorkspaceStoreValue {
     developerName: string
   ) => void;
   confirmAssignment: (assignmentId: string) => void;
-  rejectAssignment: (assignmentId: string) => void;
+  rejectAssignment: (assignmentId: string, reason?: string) => void;
   updateAssignment: (id: string, patch: Partial<DeveloperAssignment>) => void;
   requestExtension: (
     assignmentId: string,
@@ -423,7 +423,11 @@ interface WorkspaceStoreValue {
   mergeNotifications: (items: PortalNotification[]) => void;
   addInvoice: (invoice: Invoice) => void;
   updateInvoice: (id: string, patch: Partial<Invoice>) => void;
-  markEarningPaid: (id: string) => void;
+  markEarningPaid: (
+    id: string,
+    providerReference: string,
+    note?: string
+  ) => void;
   resetDemoData: () => void;
 }
 
@@ -2167,23 +2171,29 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
     }
   }, [assignments, resolveDeveloperUserId, notify]);
 
-  const rejectAssignment = useCallback((assignmentId: string) => {
-    const assignment = assignments.find((a) => a.id === assignmentId);
-    setAssignments((prev) => prev.filter((a) => a.id !== assignmentId));
-    if (assignment) {
-      setOpportunities((prev) =>
-        prev.map((o) =>
-          o.id === assignment.opportunityId
-            ? { ...o, status: "open" as const }
-            : o
-        )
+  const rejectAssignment = useCallback(
+    (assignmentId: string, reason?: string) => {
+      const assignment = assignments.find((a) => a.id === assignmentId);
+      setAssignments((prev) => prev.filter((a) => a.id !== assignmentId));
+      if (assignment) {
+        setOpportunities((prev) =>
+          prev.map((o) =>
+            o.id === assignment.opportunityId
+              ? { ...o, status: "open" as const }
+              : o
+          )
+        );
+      }
+      runApi(
+        () =>
+          rejectApiAssignment(workspaceIdRef.current, assignmentId, {
+            reason,
+          }),
+        "Reject assignment"
       );
-    }
-    runApi(
-      () => rejectApiAssignment(workspaceIdRef.current, assignmentId),
-      "Reject assignment"
-    );
-  }, [assignments]);
+    },
+    [assignments]
+  );
 
   const updateAssignment = useCallback(
     (id: string, patch: Partial<DeveloperAssignment>) => {
@@ -3148,17 +3158,35 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const markEarningPaid = useCallback((id: string) => {
-    setEarnings((prev) =>
-      prev.map((e) =>
-        e.id === id ? { ...e, status: "paid", paidAt: "2026-03-11" } : e
-      )
-    );
-    runApi(
-      () => markApiEarningPaid(workspaceIdRef.current, id),
-      "Mark earning paid"
-    );
-  }, []);
+  const markEarningPaid = useCallback(
+    (id: string, providerReference: string, note?: string) => {
+      if (!providerReference.trim()) {
+        throw new Error("Transaction reference is required");
+      }
+      setEarnings((prev) =>
+        prev.map((e) =>
+          e.id === id
+            ? {
+                ...e,
+                status: "paid",
+                payoutStatus: "paid",
+                paidAt: new Date().toISOString(),
+                providerReference: providerReference.trim(),
+              }
+            : e
+        )
+      );
+      runApi(
+        () =>
+          markApiEarningPaid(workspaceIdRef.current, id, {
+            providerReference: providerReference.trim(),
+            note,
+          }),
+        "Mark earning paid"
+      );
+    },
+    []
+  );
 
   const resetDemoData = useCallback(() => {
     if (apiMode) {

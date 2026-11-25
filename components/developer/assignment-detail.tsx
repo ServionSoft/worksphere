@@ -39,6 +39,8 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
     milestones,
     tasks,
     requestExtension,
+    confirmAssignment,
+    rejectAssignment,
     workspaceId,
     workspace,
   } = useWorkspaceStore();
@@ -165,11 +167,34 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
     <div className="flex flex-col gap-5">
       {awaitingConfirmation ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <p className="font-semibold">Waiting for admin confirmation</p>
+          <p className="font-semibold">Confirm your award</p>
           <p className="mt-1 text-amber-800">
-            Status updates and work submissions stay disabled until an administrator
-            confirms this assignment.
+            Accept to unlock tasks and submissions, or decline to release the
+            milestone back to the marketplace when allowed.
           </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              onClick={() => {
+                confirmAssignment(assignment.id);
+                toast.success("Assignment confirmed");
+              }}
+            >
+              Accept assignment
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const reason =
+                  window.prompt("Reason for declining (optional)") ?? undefined;
+                rejectAssignment(assignment.id, reason || undefined);
+                toast.message("Award declined");
+              }}
+            >
+              Decline award
+            </Button>
+          </div>
         </div>
       ) : null}
 

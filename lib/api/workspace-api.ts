@@ -499,6 +499,54 @@ export function approveApiMilestone(workspaceId: string, milestoneId: string) {
   );
 }
 
+export function fundApiMilestone(
+  workspaceId: string,
+  milestoneId: string,
+  body?: {
+    reference?: string;
+    note?: string;
+    status?: string;
+  }
+) {
+  return apiFetch<{
+    milestoneId: string;
+    fundingStatus: string;
+    fundedAt?: string;
+    fundingReference?: string;
+    manual: boolean;
+    provider: string;
+  }>(`/api/workspaces/${workspaceId}/milestones/${milestoneId}/fund`, {
+    method: "POST",
+    workspaceId,
+    body: JSON.stringify(body ?? { status: "funded" }),
+  });
+}
+
+export function approveApiMilestoneDelivery(
+  workspaceId: string,
+  milestoneId: string,
+  body?: { submissionId?: string; note?: string }
+) {
+  return apiFetch<{
+    earning: EarningRecord;
+    clearanceDays: number;
+    policy: {
+      clearanceDays: number;
+      requireFundingBeforeWork: boolean;
+      paymentProviderConfigured: boolean;
+      provider: string;
+      manualPayoutAllowed: boolean;
+    };
+  }>(
+    `/api/workspaces/${workspaceId}/milestones/${milestoneId}/approve-delivery`,
+    {
+      method: "POST",
+      workspaceId,
+      body: JSON.stringify(body ?? {}),
+    }
+  );
+}
+
 export function previewPublishApiMilestone(
   workspaceId: string,
   milestoneId: string
@@ -574,6 +622,28 @@ export function fetchMilestoneProfitability(
   );
 }
 
+export type DeveloperReviewDto = {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  milestoneId: string;
+  assignmentId: string;
+  clientProfileId: string;
+  developerProfileId: string;
+  overallRating: number;
+  communication: number;
+  workQuality: number;
+  timeliness: number;
+  professionalism: number;
+  feedback: string;
+  moderationStatus: "pending" | "visible" | "hidden" | "flagged" | string;
+  developerName?: string;
+  clientName?: string;
+  milestoneTitle?: string;
+  projectName?: string;
+  createdAt?: string | null;
+};
+
 export function createApiDeveloperReview(
   workspaceId: string,
   body: {
@@ -586,7 +656,7 @@ export function createApiDeveloperReview(
     feedback?: string;
   }
 ) {
-  return apiFetch<Record<string, unknown>>(
+  return apiFetch<DeveloperReviewDto>(
     `/api/workspaces/${workspaceId}/reviews`,
     {
       method: "POST",
@@ -598,15 +668,36 @@ export function createApiDeveloperReview(
 
 export function fetchApiDeveloperReviews(
   workspaceId: string,
-  query?: { milestoneId?: string; developerId?: string }
+  query?: {
+    milestoneId?: string;
+    developerId?: string;
+    moderationStatus?: string;
+  }
 ) {
   const params = new URLSearchParams();
   if (query?.milestoneId) params.set("milestoneId", query.milestoneId);
   if (query?.developerId) params.set("developerId", query.developerId);
+  if (query?.moderationStatus)
+    params.set("moderationStatus", query.moderationStatus);
   const qs = params.toString();
-  return apiFetch<Array<Record<string, unknown>>>(
+  return apiFetch<DeveloperReviewDto[]>(
     `/api/workspaces/${workspaceId}/reviews${qs ? `?${qs}` : ""}`,
     { workspaceId }
+  );
+}
+
+export function moderateApiDeveloperReview(
+  workspaceId: string,
+  reviewId: string,
+  moderationStatus: "visible" | "hidden" | "flagged"
+) {
+  return apiFetch<DeveloperReviewDto>(
+    `/api/workspaces/${workspaceId}/reviews/${reviewId}/moderation`,
+    {
+      method: "PATCH",
+      workspaceId,
+      body: JSON.stringify({ moderationStatus }),
+    }
   );
 }
 
@@ -766,10 +857,66 @@ export function confirmApiAssignment(workspaceId: string, assignmentId: string) 
   );
 }
 
-export function rejectApiAssignment(workspaceId: string, assignmentId: string) {
-  return apiFetch<DeveloperAssignment>(
-    `/api/workspaces/${workspaceId}/assignments/${assignmentId}/reject`,
-    { method: "POST", workspaceId }
+export function rejectApiAssignment(
+  workspaceId: string,
+  assignmentId: string,
+  body?: { reason?: string; forceReopen?: boolean }
+) {
+  return apiFetch<{
+    id: string;
+    rejected: boolean;
+    reopened?: boolean;
+    reopenBlockedReason?: string | null;
+  }>(`/api/workspaces/${workspaceId}/assignments/${assignmentId}/reject`, {
+    method: "POST",
+    workspaceId,
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
+export function fetchApiFeeSettings(workspaceId: string) {
+  return apiFetch<{
+    id: string | null;
+    platformFeePercent: number;
+    fixedFee: number;
+    effectiveFrom: string;
+    notes: string | null;
+  }>(`/api/workspaces/${workspaceId}/finance/fee-settings`, { workspaceId });
+}
+
+export function putApiFeeSettings(
+  workspaceId: string,
+  body: {
+    platformFeePercent: number;
+    fixedFee?: number;
+    effectiveFrom?: string;
+    notes?: string;
+  }
+) {
+  return apiFetch<{
+    id: string;
+    platformFeePercent: number;
+    fixedFee: number;
+    preview: { grossAmount: number; platformFee: number; netAmount: number };
+  }>(`/api/workspaces/${workspaceId}/finance/fee-settings`, {
+    method: "PUT",
+    workspaceId,
+    body: JSON.stringify(body),
+  });
+}
+
+export function resolveApiPayoutHold(
+  workspaceId: string,
+  holdId: string,
+  body?: { note?: string }
+) {
+  return apiFetch<{ holdId: string; earningId: string; payoutStatus: string }>(
+    `/api/workspaces/${workspaceId}/payout-holds/${holdId}/resolve`,
+    {
+      method: "POST",
+      workspaceId,
+      body: JSON.stringify(body ?? {}),
+    }
   );
 }
 
@@ -1179,10 +1326,51 @@ export function patchApiInvoice(
   );
 }
 
-export function markApiEarningPaid(workspaceId: string, earningId: string) {
-  return apiFetch<EarningRecord>(
-    `/api/workspaces/${workspaceId}/earnings/${earningId}/mark-paid`,
-    { method: "POST", workspaceId }
+export function markApiEarningPaid(
+  workspaceId: string,
+  earningId: string,
+  body: { providerReference: string; note?: string; paidAt?: string }
+) {
+  return apiFetch<{
+    id: string;
+    status: string;
+    payoutStatus?: string;
+    paidAt?: string;
+    provider?: string;
+    paymentProviderConfigured?: boolean;
+  }>(`/api/workspaces/${workspaceId}/earnings/${earningId}/mark-paid`, {
+    method: "POST",
+    workspaceId,
+    body: JSON.stringify(body),
+  });
+}
+
+export function refreshApiPayoutEligibility(
+  workspaceId: string,
+  earningId?: string
+) {
+  return apiFetch<{ updatedCount: number; earningIds: string[] }>(
+    `/api/workspaces/${workspaceId}/finance/payouts/refresh-eligibility`,
+    {
+      method: "POST",
+      workspaceId,
+      body: JSON.stringify(earningId ? { earningId } : {}),
+    }
+  );
+}
+
+export function placeApiPayoutHold(
+  workspaceId: string,
+  earningId: string,
+  body: { reason: string; holdType?: string }
+) {
+  return apiFetch<{ holdId: string; earningId: string; payoutStatus: string }>(
+    `/api/workspaces/${workspaceId}/earnings/${earningId}/holds`,
+    {
+      method: "POST",
+      workspaceId,
+      body: JSON.stringify(body),
+    }
   );
 }
 

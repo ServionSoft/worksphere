@@ -183,6 +183,16 @@ export interface Milestone {
   awardedDeveloperCost?: number | null;
   grossMargin?: number;
   grossMarginPct?: number | null;
+  fundingStatus?:
+    | "not_funded"
+    | "funding_pending"
+    | "funded"
+    | "funding_failed"
+    | "refunded"
+    | "on_hold"
+    | string;
+  fundedAt?: string | null;
+  deliveryApprovedAt?: string | null;
 }
 
 export interface ProjectDocument {

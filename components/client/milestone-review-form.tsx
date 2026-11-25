@@ -80,7 +80,7 @@ export function MilestoneReviewForm({
         feedback,
       });
       setDone(true);
-      toast.success("Review submitted");
+      toast.success("Review submitted for admin approval");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not submit review");
     } finally {
@@ -91,10 +91,13 @@ export function MilestoneReviewForm({
   return (
     <SectionCard
       title={`Rate developer · ${milestoneTitle}`}
-      description="Available after this milestone is completed. One review per milestone."
+      description="Available after this milestone is completed. One review per milestone — an admin must approve before it counts on the developer’s profile."
     >
       {done ? (
-        <p className="text-sm text-muted-foreground">Thanks — review recorded.</p>
+        <p className="text-sm text-muted-foreground">
+          Thanks — your rating was sent to the admin for approval. It will appear
+          on the developer’s profile only after approval.
+        </p>
       ) : (
         <div className="space-y-3">
           <StarRow label="Overall" value={overall} onChange={setOverall} />

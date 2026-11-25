@@ -1,16 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ShieldCheck } from "lucide-react";
+import { Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/shared/section-card";
 import { SubmissionDeliverables } from "@/components/shared/submission-deliverables";
 import { SubmissionStatusBadge } from "@/components/shared/milestone-badge";
+import { PendingDeveloperRatings } from "@/components/admin/pending-developer-ratings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { approveApiMilestoneDelivery } from "@/lib/api/workspace-api";
+import { isApiDataSource } from "@/lib/data-source";
 import { formatRelativeTime, formatShortDate } from "@/lib/format";
 import { submissionDisplayStatus } from "@/lib/submission-status";
 import type { Submission, SubmissionStatus, Task } from "@/lib/types";
@@ -72,6 +75,10 @@ export function ApprovalsCenter() {
     submissions,
     projects,
     tasks,
+    milestones,
+    assignments,
+    workspace,
+    setWorkspaceId,
     reviewWorkSubmission,
     authorizeClientReview,
     authorizeSubmissionForClient,
@@ -82,6 +89,7 @@ export function ApprovalsCenter() {
 
   const [filter, setFilter] = useState<Filter>("needs_review");
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [deliveryBusyId, setDeliveryBusyId] = useState<string | null>(null);
 
   const items = useMemo(() => {
     const workItems: UnifiedItem[] = workSubmissions.map((w) => ({
@@ -240,12 +248,56 @@ export function ApprovalsCenter() {
     toast.success("Authorized for client review", { description: item.title });
   }
 
+  function resolveMilestoneId(item: UnifiedItem): string | null {
+    if (item.kind !== "work") return null;
+    if (item.work.milestoneId) return item.work.milestoneId;
+    if (item.work.assignmentId) {
+      const a = assignments.find((x) => x.id === item.work.assignmentId);
+      if (a?.milestoneId) return a.milestoneId;
+    }
+    return null;
+  }
+
+  async function approveDelivery(item: UnifiedItem) {
+    if (item.kind !== "work" || item.status !== "approved") {
+      toast.error("Internally approve the submission before delivery approval");
+      return;
+    }
+    const milestoneId = resolveMilestoneId(item);
+    if (!milestoneId || !workspace?.id || !isApiDataSource()) {
+      toast.error("Delivery approval requires a milestone-linked API submission");
+      return;
+    }
+    const ms = milestones.find((m) => m.id === milestoneId);
+    if (ms?.deliveryApprovedAt) {
+      toast.message("Delivery already approved for this milestone");
+      return;
+    }
+    setDeliveryBusyId(item.id);
+    try {
+      const result = await approveApiMilestoneDelivery(workspace.id, milestoneId, {
+        submissionId: item.id,
+        note: notes[item.id],
+      });
+      toast.success("Delivery approved — payout clearance started", {
+        description: `${result.clearanceDays} calendar day(s) until eligible`,
+      });
+      setWorkspaceId(workspace.id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Approve delivery failed");
+    } finally {
+      setDeliveryBusyId(null);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Approvals"
-        description="Internal review of work submissions and project deliverables."
+        description="Internal review of work submissions, deliverables, and client developer ratings."
       />
+
+      <PendingDeveloperRatings />
 
       <Tabs
         value={filter}
@@ -334,7 +386,10 @@ export function ApprovalsCenter() {
               ) : null}
 
               {canAct(item.status) ||
-              (item.status === "approved" && !item.authorizedForClient) ? (
+              (item.status === "approved" && !item.authorizedForClient) ||
+              (item.kind === "work" &&
+                item.status === "approved" &&
+                Boolean(resolveMilestoneId(item))) ? (
                 <div className="mt-4 flex flex-col gap-2">
                   <Textarea
                     placeholder="Review notes / revision comments..."
@@ -378,6 +433,21 @@ export function ApprovalsCenter() {
                       >
                         <ShieldCheck className="size-3.5" />
                         Authorize for client
+                      </Button>
+                    ) : null}
+                    {item.kind === "work" &&
+                    item.status === "approved" &&
+                    resolveMilestoneId(item) ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={deliveryBusyId === item.id}
+                        onClick={() => void approveDelivery(item)}
+                      >
+                        {deliveryBusyId === item.id ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : null}
+                        Approve delivery
                       </Button>
                     ) : null}
                   </div>

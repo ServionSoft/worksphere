@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/shared/section-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import {
   Table,
@@ -16,6 +17,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  fetchApiFeeSettings,
+  placeApiPayoutHold,
+  putApiFeeSettings,
+  refreshApiPayoutEligibility,
+  resolveApiPayoutHold,
+} from "@/lib/api/workspace-api";
+import { isApiDataSource } from "@/lib/data-source";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { ChangeOrdersPanel } from "@/components/admin/change-orders-panel";
 import { useWorkspaceStore } from "@/lib/workspace-store";
@@ -38,9 +47,35 @@ export function FinanceOverview() {
     invoices,
     earnings,
     developers,
+    workspace,
+    setWorkspaceId,
     updateInvoice,
     markEarningPaid,
   } = useWorkspaceStore();
+
+  const [feePercent, setFeePercent] = useState("0");
+  const [fixedFee, setFixedFee] = useState("0");
+  const [feeNotes, setFeeNotes] = useState("");
+  const [feeBusy, setFeeBusy] = useState(false);
+  const [holdIds, setHoldIds] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!workspace?.id || !isApiDataSource()) return;
+    let cancelled = false;
+    void fetchApiFeeSettings(workspace.id)
+      .then((s) => {
+        if (cancelled) return;
+        setFeePercent(String(s.platformFeePercent ?? 0));
+        setFixedFee(String(s.fixedFee ?? 0));
+        setFeeNotes(s.notes ?? "");
+      })
+      .catch(() => {
+        /* fee settings optional until migration */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace?.id]);
 
   const activeProjects = useMemo(
     () => projects.filter((p) => !p.archived),
@@ -79,18 +114,119 @@ export function FinanceOverview() {
   );
 
   const unpaidEarningsTotal = useMemo(
-    () => unpaidEarnings.reduce((sum, e) => sum + e.amount, 0),
+    () => unpaidEarnings.reduce((sum, e) => sum + (e.netAmount ?? e.amount), 0),
     [unpaidEarnings]
   );
 
   const developerName = (id: string) =>
     developers.find((d) => d.id === id)?.name ?? id;
 
+  async function saveFeeSettings() {
+    if (!workspace?.id || !isApiDataSource()) {
+      toast.error("Fee settings require API mode");
+      return;
+    }
+    setFeeBusy(true);
+    try {
+      const result = await putApiFeeSettings(workspace.id, {
+        platformFeePercent: Number(feePercent) || 0,
+        fixedFee: Number(fixedFee) || 0,
+        notes: feeNotes || undefined,
+      });
+      toast.success("Fee settings saved", {
+        description: `Preview net on $1000: ${formatCurrency(result.preview.netAmount)}`,
+      });
+      setWorkspaceId(workspace.id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save fee settings failed");
+    } finally {
+      setFeeBusy(false);
+    }
+  }
+
+  function payEarning(earningId: string, title: string) {
+    const providerReference =
+      window.prompt("Transaction / payout reference (required)")?.trim() ?? "";
+    if (!providerReference) {
+      toast.error("Reference is required to mark paid");
+      return;
+    }
+    const note = window.prompt("Optional note") ?? undefined;
+    try {
+      markEarningPaid(earningId, providerReference, note || undefined);
+      toast.success("Earning marked paid", { description: title });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Mark paid failed");
+    }
+  }
+
+  async function holdEarning(earningId: string) {
+    if (!workspace?.id || !isApiDataSource()) {
+      toast.error("Holds require API mode");
+      return;
+    }
+    const reason = window.prompt("Hold reason (required)")?.trim() ?? "";
+    if (!reason) {
+      toast.error("Hold reason is required");
+      return;
+    }
+    try {
+      const result = await placeApiPayoutHold(workspace.id, earningId, {
+        reason,
+      });
+      setHoldIds((prev) => ({ ...prev, [earningId]: result.holdId }));
+      toast.success("Payout hold placed", {
+        description: `Hold ${result.holdId.slice(0, 8)}…`,
+      });
+      setWorkspaceId(workspace.id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Place hold failed");
+    }
+  }
+
+  async function resolveHold(earningId: string) {
+    if (!workspace?.id || !isApiDataSource()) return;
+    const known = holdIds[earningId];
+    const holdId =
+      known ||
+      window.prompt("Hold ID to resolve")?.trim() ||
+      "";
+    if (!holdId) {
+      toast.error("Hold ID required");
+      return;
+    }
+    try {
+      await resolveApiPayoutHold(workspace.id, holdId);
+      setHoldIds((prev) => {
+        const next = { ...prev };
+        delete next[earningId];
+        return next;
+      });
+      toast.success("Hold resolved");
+      setWorkspaceId(workspace.id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Resolve hold failed");
+    }
+  }
+
+  async function refreshEligibility() {
+    if (!workspace?.id || !isApiDataSource()) return;
+    try {
+      const result = await refreshApiPayoutEligibility(workspace.id);
+      toast.success("Eligibility refreshed", {
+        description: `${result.updatedCount} earning(s) updated`,
+      });
+      setWorkspaceId(workspace.id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Refresh failed");
+    }
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Finance"
-        description="Budgets, invoices, earnings, and commercial change orders."
+        description="Budgets, invoices, earnings, fees, and commercial change orders."
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -101,7 +237,7 @@ export function FinanceOverview() {
           value={formatCurrency(outstandingInvoiceTotal)}
         />
         <Stat
-          label="Unpaid earnings"
+          label="Unpaid earnings (net)"
           value={formatCurrency(unpaidEarningsTotal)}
         />
       </div>
@@ -116,6 +252,7 @@ export function FinanceOverview() {
           <TabsTrigger value="earnings">
             Earnings ({earnings.length})
           </TabsTrigger>
+          <TabsTrigger value="fees">Platform fees</TabsTrigger>
           <TabsTrigger value="change-orders">Change orders</TabsTrigger>
         </TabsList>
 
@@ -318,7 +455,14 @@ export function FinanceOverview() {
         <TabsContent value="earnings" className="mt-4">
           <SectionCard
             title="Developer earnings"
-            description="Approve payouts with markEarningPaid (demo dates)."
+            description="Manual mark-paid requires a transaction reference. Holds pause eligibility until resolved."
+            action={
+              isApiDataSource() ? (
+                <Button size="sm" variant="outline" onClick={() => void refreshEligibility()}>
+                  Refresh eligibility
+                </Button>
+              ) : null
+            }
             bodyClassName="p-0"
           >
             <Table>
@@ -326,8 +470,8 @@ export function FinanceOverview() {
                 <TableRow>
                   <TableHead>Assignment</TableHead>
                   <TableHead>Developer</TableHead>
-                  <TableHead>Earned</TableHead>
-                  <TableHead>Amount</TableHead>
+                  <TableHead>Gross / fee / net</TableHead>
+                  <TableHead>Clearance</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -335,6 +479,10 @@ export function FinanceOverview() {
               <TableBody>
                 {earnings.map((earning) => {
                   const unpaid = earning.status !== "paid";
+                  const payout = String(earning.payoutStatus ?? earning.status);
+                  const onHold = payout === "on_hold";
+                  const canPay =
+                    unpaid && (payout === "eligible" || payout === "pending" || !earning.payoutStatus);
                   return (
                     <TableRow key={earning.id}>
                       <TableCell className="font-medium">
@@ -343,36 +491,87 @@ export function FinanceOverview() {
                       <TableCell>
                         {developerName(earning.developerId)}
                       </TableCell>
-                      <TableCell className="tabular-nums text-muted-foreground">
-                        {formatDate(earning.earnedAt)}
-                        {earning.paidAt
-                          ? ` · paid ${formatDate(earning.paidAt)}`
-                          : ""}
+                      <TableCell className="tabular-nums text-sm">
+                        <div>
+                          {formatCurrency(
+                            earning.grossAmount ?? earning.amount,
+                            earning.currency
+                          )}
+                        </div>
+                        {(earning.platformFee ?? 0) > 0 ? (
+                          <div className="text-xs text-muted-foreground">
+                            fee {formatCurrency(earning.platformFee!, earning.currency)}
+                            {earning.feePercentSnapshot != null
+                              ? ` (${earning.feePercentSnapshot}%)`
+                              : ""}
+                          </div>
+                        ) : null}
+                        <div className="font-medium">
+                          net{" "}
+                          {formatCurrency(
+                            earning.netAmount ?? earning.amount,
+                            earning.currency
+                          )}
+                        </div>
                       </TableCell>
-                      <TableCell className="tabular-nums font-medium">
-                        {formatCurrency(earning.amount, earning.currency)}
+                      <TableCell className="text-xs text-muted-foreground">
+                        {earning.availableAt
+                          ? `Avail ${formatDate(earning.availableAt)}`
+                          : earning.clearanceDays != null
+                            ? `${earning.clearanceDays}d`
+                            : "—"}
+                        {earning.earnedAt
+                          ? ` · earned ${formatDate(earning.earnedAt)}`
+                          : ""}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize">
-                          {earning.status}
+                          {payout}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
                         {unpaid ? (
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              markEarningPaid(earning.id);
-                              toast.success("Earning paid", {
-                                description: `${earning.assignmentTitle} marked paid (demo).`,
-                              });
-                            }}
-                          >
-                            Mark paid
-                          </Button>
+                          <div className="flex flex-wrap justify-end gap-2">
+                            {canPay ? (
+                              <Button
+                                size="sm"
+                                onClick={() =>
+                                  payEarning(earning.id, earning.assignmentTitle)
+                                }
+                              >
+                                Mark paid
+                              </Button>
+                            ) : null}
+                            {isApiDataSource() && !onHold ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void holdEarning(earning.id)}
+                              >
+                                Hold
+                              </Button>
+                            ) : null}
+                            {isApiDataSource() && onHold ? (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => void resolveHold(earning.id)}
+                              >
+                                Resolve hold
+                              </Button>
+                            ) : null}
+                            {!canPay && !onHold ? (
+                              <span className="text-xs text-muted-foreground">
+                                Awaiting clearance
+                              </span>
+                            ) : null}
+                          </div>
                         ) : (
                           <span className="text-xs text-muted-foreground">
                             Paid
+                            {earning.providerReference
+                              ? ` · ${earning.providerReference}`
+                              : ""}
                           </span>
                         )}
                       </TableCell>
@@ -391,6 +590,49 @@ export function FinanceOverview() {
                 ) : null}
               </TableBody>
             </Table>
+          </SectionCard>
+        </TabsContent>
+
+        <TabsContent value="fees" className="mt-4">
+          <SectionCard
+            title="Platform fee settings"
+            description="Percent and fixed fee snapshot onto earnings when delivery is approved. Defaults remain 0 until you set them."
+          >
+            <div className="grid max-w-xl gap-3 sm:grid-cols-2">
+              <label className="grid gap-1 text-sm">
+                <span className="text-muted-foreground">Platform fee %</span>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={feePercent}
+                  onChange={(e) => setFeePercent(e.target.value)}
+                />
+              </label>
+              <label className="grid gap-1 text-sm">
+                <span className="text-muted-foreground">Fixed fee</span>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={fixedFee}
+                  onChange={(e) => setFixedFee(e.target.value)}
+                />
+              </label>
+              <label className="grid gap-1 text-sm sm:col-span-2">
+                <span className="text-muted-foreground">Notes</span>
+                <Input
+                  value={feeNotes}
+                  onChange={(e) => setFeeNotes(e.target.value)}
+                  placeholder="Optional"
+                />
+              </label>
+            </div>
+            <div className="mt-4">
+              <Button disabled={feeBusy} onClick={() => void saveFeeSettings()}>
+                {feeBusy ? "Saving…" : "Save fee settings"}
+              </Button>
+            </div>
           </SectionCard>
         </TabsContent>
 

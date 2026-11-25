@@ -191,24 +191,38 @@ export function DeveloperEarningsPage() {
   const { earnings, developers } = useWorkspaceStore();
   const profile = developers.find((d) => d.id === user.developerId);
   const mine = earnings.filter((e) => e.developerId === user.developerId);
-  const paid = mine.filter((e) => e.status === "paid").reduce((s, e) => s + e.amount, 0);
-  const pending = mine
-    .filter((e) => e.status === "pending")
+
+  function payoutOf(e: (typeof mine)[number]) {
+    return String(e.payoutStatus ?? e.status);
+  }
+
+  const paid = mine
+    .filter((e) => payoutOf(e) === "paid" || e.status === "paid")
     .reduce((s, e) => s + e.amount, 0);
-  const approved = mine
-    .filter((e) => e.status === "approved")
+  const pendingClearance = mine
+    .filter((e) => payoutOf(e) === "pending_clearance")
+    .reduce((s, e) => s + e.amount, 0);
+  const eligible = mine
+    .filter((e) => payoutOf(e) === "eligible" || e.status === "approved")
+    .reduce((s, e) => s + e.amount, 0);
+  const onHold = mine
+    .filter((e) => payoutOf(e) === "on_hold")
     .reduce((s, e) => s + e.amount, 0);
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Earnings"
-        description="Mock financial dashboard. No real payment processing."
+        description="Ledger earnings with 14-calendar-day clearance after Admin delivery approval. No payment provider is configured — paid status is recorded manually by Admin."
       />
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Paid" value={formatCurrency(paid)} />
-        <Stat label="Approved" value={formatCurrency(approved)} />
-        <Stat label="Pending" value={formatCurrency(pending)} />
+        <Stat label="Eligible for payout" value={formatCurrency(eligible)} />
+        <Stat
+          label="Pending clearance"
+          value={formatCurrency(pendingClearance)}
+        />
+        <Stat label="On hold" value={formatCurrency(onHold)} />
       </div>
 
       <SectionCard title="Performance">
@@ -233,29 +247,40 @@ export function DeveloperEarningsPage() {
 
       <SectionCard title="Payment history" bodyClassName="p-0">
         <ul className="divide-y divide-border">
-          {mine.map((e) => (
-            <li
-              key={e.id}
-              className="flex flex-col gap-1 px-5 py-3 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div>
-                <p className="text-sm font-medium">{e.assignmentTitle}</p>
-                <p className="text-xs text-muted-foreground">
-                  Status: <span className="capitalize">{e.status}</span> ·{" "}
-                  {formatDate(e.earnedAt)}
-                  {e.paidAt ? ` · paid ${formatDate(e.paidAt)}` : ""}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="font-semibold tabular-nums">
-                  {formatCurrency(e.amount, e.currency)}
-                </p>
-                <Badge variant="outline" className="mt-1 capitalize">
-                  {e.status}
-                </Badge>
-              </div>
-            </li>
-          ))}
+          {mine.map((e) => {
+            const payout = payoutOf(e).replace(/_/g, " ");
+            return (
+              <li
+                key={e.id}
+                className="flex flex-col gap-1 px-5 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="text-sm font-medium">{e.assignmentTitle}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Approved{" "}
+                    {e.approvedAt
+                      ? formatDate(e.approvedAt)
+                      : formatDate(e.earnedAt)}
+                    {e.availableAt
+                      ? ` · available ${formatDate(e.availableAt)}`
+                      : ""}
+                    {e.paidAt ? ` · paid ${formatDate(e.paidAt)}` : ""}
+                    {e.providerReference
+                      ? ` · ref ${e.providerReference}`
+                      : ""}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-semibold tabular-nums">
+                    {formatCurrency(e.netAmount ?? e.amount, e.currency)}
+                  </p>
+                  <Badge variant="outline" className="mt-1 capitalize">
+                    {payout}
+                  </Badge>
+                </div>
+              </li>
+            );
+          })}
           {mine.length === 0 ? (
             <li className="px-5 py-10 text-center text-sm text-muted-foreground">
               No payment records yet.
