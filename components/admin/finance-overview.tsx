@@ -27,8 +27,13 @@ import {
 import { isApiDataSource } from "@/lib/data-source";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { ChangeOrdersPanel } from "@/components/admin/change-orders-panel";
+import { MarkPaidDialog } from "@/components/admin/mark-paid-dialog";
 import { useWorkspaceStore } from "@/lib/workspace-store";
 import { MilestoneFinancePanel } from "@/components/projects/detail/milestone-finance-panel";
+import type { EarningRecord } from "@/lib/portal-types";
+import {
+  fetchApiPaymentProofDownloadUrl,
+} from "@/lib/api/workspace-api";
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -50,7 +55,6 @@ export function FinanceOverview() {
     workspace,
     setWorkspaceId,
     updateInvoice,
-    markEarningPaid,
   } = useWorkspaceStore();
 
   const [feePercent, setFeePercent] = useState("0");
@@ -58,6 +62,7 @@ export function FinanceOverview() {
   const [feeNotes, setFeeNotes] = useState("");
   const [feeBusy, setFeeBusy] = useState(false);
   const [holdIds, setHoldIds] = useState<Record<string, string>>({});
+  const [payTarget, setPayTarget] = useState<EarningRecord | null>(null);
 
   useEffect(() => {
     if (!workspace?.id || !isApiDataSource()) return;
@@ -144,19 +149,16 @@ export function FinanceOverview() {
     }
   }
 
-  function payEarning(earningId: string, title: string) {
-    const providerReference =
-      window.prompt("Transaction / payout reference (required)")?.trim() ?? "";
-    if (!providerReference) {
-      toast.error("Reference is required to mark paid");
-      return;
-    }
-    const note = window.prompt("Optional note") ?? undefined;
+  async function viewProof(earningId: string) {
+    if (!workspace?.id) return;
     try {
-      markEarningPaid(earningId, providerReference, note || undefined);
-      toast.success("Earning marked paid", { description: title });
+      const result = await fetchApiPaymentProofDownloadUrl(
+        workspace.id,
+        earningId
+      );
+      window.open(result.url, "_blank", "noopener,noreferrer");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Mark paid failed");
+      toast.error(e instanceof Error ? e.message : "Could not open proof");
     }
   }
 
@@ -455,7 +457,7 @@ export function FinanceOverview() {
         <TabsContent value="earnings" className="mt-4">
           <SectionCard
             title="Developer earnings"
-            description="Manual mark-paid requires a transaction reference. Holds pause eligibility until resolved."
+            description="Mark paid requires developer payout account, amount, date, txn reference, and screenshot/PDF proof. Holds pause eligibility until resolved."
             action={
               isApiDataSource() ? (
                 <Button size="sm" variant="outline" onClick={() => void refreshEligibility()}>
@@ -535,9 +537,7 @@ export function FinanceOverview() {
                             {canPay ? (
                               <Button
                                 size="sm"
-                                onClick={() =>
-                                  payEarning(earning.id, earning.assignmentTitle)
-                                }
+                                onClick={() => setPayTarget(earning)}
                               >
                                 Mark paid
                               </Button>
@@ -567,12 +567,23 @@ export function FinanceOverview() {
                             ) : null}
                           </div>
                         ) : (
-                          <span className="text-xs text-muted-foreground">
-                            Paid
-                            {earning.providerReference
-                              ? ` · ${earning.providerReference}`
-                              : ""}
-                          </span>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="text-xs text-muted-foreground">
+                              Paid
+                              {earning.providerReference
+                                ? ` · ${earning.providerReference}`
+                                : ""}
+                            </span>
+                            {earning.hasPaymentProof && workspace?.id ? (
+                              <Button
+                                size="xs"
+                                variant="outline"
+                                onClick={() => void viewProof(earning.id)}
+                              >
+                                View proof
+                              </Button>
+                            ) : null}
+                          </div>
                         )}
                       </TableCell>
                     </TableRow>
@@ -640,6 +651,21 @@ export function FinanceOverview() {
           <ChangeOrdersPanel />
         </TabsContent>
       </Tabs>
+
+      {workspace?.id ? (
+        <MarkPaidDialog
+          open={Boolean(payTarget)}
+          onOpenChange={(v) => !v && setPayTarget(null)}
+          workspaceId={workspace.id}
+          earning={payTarget}
+          developerName={
+            payTarget ? developerName(payTarget.developerId) : ""
+          }
+          onPaid={() => {
+            if (workspace.id) setWorkspaceId(workspace.id);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

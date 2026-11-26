@@ -188,9 +188,28 @@ export function DeveloperSubmissionsPage() {
 
 export function DeveloperEarningsPage() {
   const { user } = useRequiredAuth();
-  const { earnings, developers } = useWorkspaceStore();
+  const { earnings, developers, workspace } = useWorkspaceStore();
   const profile = developers.find((d) => d.id === user.developerId);
   const mine = earnings.filter((e) => e.developerId === user.developerId);
+
+  async function viewProof(earningId: string) {
+    if (!workspace?.id || !isApiDataSource()) {
+      toast.error("Proof viewing requires API mode");
+      return;
+    }
+    try {
+      const { fetchApiPaymentProofDownloadUrl } = await import(
+        "@/lib/api/workspace-api"
+      );
+      const result = await fetchApiPaymentProofDownloadUrl(
+        workspace.id,
+        earningId
+      );
+      window.open(result.url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not open proof");
+    }
+  }
 
   function payoutOf(e: (typeof mine)[number]) {
     return String(e.payoutStatus ?? e.status);
@@ -213,7 +232,7 @@ export function DeveloperEarningsPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Earnings"
-        description="Ledger earnings with 14-calendar-day clearance after Admin delivery approval. No payment provider is configured — paid status is recorded manually by Admin."
+        description="14-day clearance after Admin delivery approval. When Admin marks paid, you see account snapshot, transaction reference, and payment proof. Add payout methods under Settings → Payout methods."
       />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Paid" value={formatCurrency(paid)} />
@@ -269,14 +288,42 @@ export function DeveloperEarningsPage() {
                       ? ` · ref ${e.providerReference}`
                       : ""}
                   </p>
+                  {e.payoutMethodSnapshot ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Paid to{" "}
+                      {String(e.payoutMethodSnapshot.methodType ?? "").replace(
+                        /_/g,
+                        " "
+                      )}{" "}
+                      · {e.payoutMethodSnapshot.accountTitle}
+                      {e.payoutMethodSnapshot.accountNumber
+                        ? ` · ${e.payoutMethodSnapshot.accountNumber}`
+                        : ""}
+                      {e.paymentDate ? ` · ${formatDate(e.paymentDate)}` : ""}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="text-right">
                   <p className="font-semibold tabular-nums">
-                    {formatCurrency(e.netAmount ?? e.amount, e.currency)}
+                    {formatCurrency(
+                      e.paymentAmount ?? e.netAmount ?? e.amount,
+                      e.paymentCurrency ?? e.currency
+                    )}
                   </p>
                   <Badge variant="outline" className="mt-1 capitalize">
                     {payout}
                   </Badge>
+                  {e.hasPaymentProof ? (
+                    <div className="mt-2">
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => void viewProof(e.id)}
+                      >
+                        View payment proof
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               </li>
             );

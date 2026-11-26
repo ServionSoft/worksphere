@@ -309,6 +309,35 @@ export type PayoutStatus =
   | "cancelled"
   | "refunded";
 
+export type PayoutMethodType = "bank_transfer" | "jazzcash" | "easypaisa";
+
+export interface DeveloperPayoutAccount {
+  id: string;
+  developerId: string;
+  methodType: PayoutMethodType;
+  label: string;
+  accountTitle: string;
+  bankName: string | null;
+  accountNumber: string;
+  iban: string | null;
+  branchCode: string | null;
+  isPrimary: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayoutMethodSnapshot {
+  accountId?: string;
+  methodType?: PayoutMethodType | string;
+  label?: string;
+  accountTitle?: string;
+  bankName?: string | null;
+  accountNumber?: string;
+  iban?: string | null;
+  branchCode?: string | null;
+}
+
 export interface EarningRecord {
   id: string;
   assignmentId: string;
@@ -333,6 +362,13 @@ export interface EarningRecord {
   failureReason?: string;
   feePercentSnapshot?: number;
   feeFixedSnapshot?: number;
+  payoutAccountId?: string | null;
+  payoutMethodSnapshot?: PayoutMethodSnapshot | null;
+  paymentAmount?: number | null;
+  paymentCurrency?: string | null;
+  paymentDate?: string | null;
+  hasPaymentProof?: boolean;
+  paymentProofFileName?: string | null;
 }
 
 export interface PortalNotification {

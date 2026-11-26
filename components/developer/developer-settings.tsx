@@ -41,12 +41,14 @@ import { isApiDataSource } from "@/lib/data-source";
 import { formatDate } from "@/lib/format";
 import type { DeveloperProfile } from "@/lib/portal-types";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { PayoutAccountsPanel } from "@/components/developer/payout-accounts-panel";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 type SettingsSection =
   | "account"
   | "professional"
+  | "payout"
   | "security"
   | "notifications"
   | "preferences"
@@ -56,6 +58,11 @@ type SettingsSection =
 const SECTIONS: Array<{ id: SettingsSection; label: string; hint: string }> = [
   { id: "account", label: "Account", hint: "Identity & contact" },
   { id: "professional", label: "Professional", hint: "Public talent profile" },
+  {
+    id: "payout",
+    label: "Payout methods",
+    hint: "Bank / JazzCash / Easypaisa",
+  },
   { id: "security", label: "Security", hint: "Password & sessions" },
   { id: "notifications", label: "Notifications", hint: "In-app alerts" },
   { id: "preferences", label: "Preferences", hint: "Theme & formats" },
@@ -959,6 +966,8 @@ export function DeveloperSettingsPage() {
               )}
             </SectionCard>
           ) : null}
+
+          {section === "payout" ? <PayoutAccountsPanel /> : null}
 
           {section === "security" ? (
             <div className="space-y-4">

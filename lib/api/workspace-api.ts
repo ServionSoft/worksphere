@@ -1497,10 +1497,24 @@ export function patchApiInvoice(
   );
 }
 
+export type MarkEarningPaidBody = {
+  providerReference: string;
+  note?: string;
+  paidAt?: string;
+  payoutAccountId?: string;
+  paymentAmount: number;
+  paymentCurrency: string;
+  paymentDate: string;
+  proofStoragePath: string;
+  proofFileName: string;
+  proofMimeType: string;
+  proofSizeBytes: number;
+};
+
 export function markApiEarningPaid(
   workspaceId: string,
   earningId: string,
-  body: { providerReference: string; note?: string; paidAt?: string }
+  body: MarkEarningPaidBody
 ) {
   return apiFetch<{
     id: string;
@@ -1514,6 +1528,91 @@ export function markApiEarningPaid(
     workspaceId,
     body: JSON.stringify(body),
   });
+}
+
+export function listApiMyPayoutAccounts(workspaceId: string) {
+  return apiFetch<import("@/lib/portal-types").DeveloperPayoutAccount[]>(
+    `/api/workspaces/${workspaceId}/me/payout-accounts`,
+    { workspaceId }
+  );
+}
+
+export function createApiPayoutAccount(
+  workspaceId: string,
+  body: {
+    methodType: string;
+    label?: string;
+    accountTitle: string;
+    bankName?: string | null;
+    accountNumber: string;
+    iban?: string | null;
+    branchCode?: string | null;
+    isPrimary?: boolean;
+  }
+) {
+  return apiFetch<import("@/lib/portal-types").DeveloperPayoutAccount>(
+    `/api/workspaces/${workspaceId}/me/payout-accounts`,
+    { method: "POST", workspaceId, body: JSON.stringify(body) }
+  );
+}
+
+export function patchApiPayoutAccount(
+  workspaceId: string,
+  accountId: string,
+  body: Record<string, unknown>
+) {
+  return apiFetch<import("@/lib/portal-types").DeveloperPayoutAccount>(
+    `/api/workspaces/${workspaceId}/me/payout-accounts/${accountId}`,
+    { method: "PATCH", workspaceId, body: JSON.stringify(body) }
+  );
+}
+
+export function deleteApiPayoutAccount(
+  workspaceId: string,
+  accountId: string
+) {
+  return apiFetch<{ id: string; deleted: boolean }>(
+    `/api/workspaces/${workspaceId}/me/payout-accounts/${accountId}`,
+    { method: "DELETE", workspaceId }
+  );
+}
+
+export function listApiDeveloperPayoutAccounts(
+  workspaceId: string,
+  developerProfileId: string
+) {
+  return apiFetch<import("@/lib/portal-types").DeveloperPayoutAccount[]>(
+    `/api/workspaces/${workspaceId}/developers/${developerProfileId}/payout-accounts`,
+    { workspaceId }
+  );
+}
+
+export function createApiPaymentProofUploadUrl(
+  workspaceId: string,
+  earningId: string,
+  body: { fileName: string; contentType?: string; sizeBytes?: number }
+) {
+  return apiFetch<{
+    signedUrl: string;
+    path: string;
+    storagePath: string;
+    bucket: string;
+    contentType: string;
+    token?: string;
+  }>(
+    `/api/workspaces/${workspaceId}/earnings/${earningId}/payment-proof/upload-url`,
+    { method: "POST", workspaceId, body: JSON.stringify(body) }
+  );
+}
+
+export function fetchApiPaymentProofDownloadUrl(
+  workspaceId: string,
+  earningId: string
+) {
+  return apiFetch<{ url: string; fileName: string; expiresIn: number }>(
+    `/api/workspaces/${workspaceId}/earnings/${earningId}/payment-proof/download-url`,
+    { workspaceId }
+  );
 }
 
 export function refreshApiPayoutEligibility(

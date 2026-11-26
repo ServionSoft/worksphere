@@ -426,7 +426,17 @@ interface WorkspaceStoreValue {
   markEarningPaid: (
     id: string,
     providerReference: string,
-    note?: string
+    note?: string,
+    extras?: {
+      payoutAccountId?: string;
+      paymentAmount: number;
+      paymentCurrency: string;
+      paymentDate: string;
+      proofStoragePath: string;
+      proofFileName: string;
+      proofMimeType: string;
+      proofSizeBytes: number;
+    }
   ) => void;
   resetDemoData: () => void;
 }
@@ -3159,9 +3169,28 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const markEarningPaid = useCallback(
-    (id: string, providerReference: string, note?: string) => {
+    (
+      id: string,
+      providerReference: string,
+      note?: string,
+      extras?: {
+        payoutAccountId?: string;
+        paymentAmount: number;
+        paymentCurrency: string;
+        paymentDate: string;
+        proofStoragePath: string;
+        proofFileName: string;
+        proofMimeType: string;
+        proofSizeBytes: number;
+      }
+    ) => {
       if (!providerReference.trim()) {
         throw new Error("Transaction reference is required");
+      }
+      if (!extras) {
+        throw new Error(
+          "Payment proof fields are required to mark an earning paid"
+        );
       }
       setEarnings((prev) =>
         prev.map((e) =>
@@ -3172,6 +3201,11 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
                 payoutStatus: "paid",
                 paidAt: new Date().toISOString(),
                 providerReference: providerReference.trim(),
+                paymentAmount: extras.paymentAmount,
+                paymentCurrency: extras.paymentCurrency,
+                paymentDate: extras.paymentDate,
+                hasPaymentProof: true,
+                paymentProofFileName: extras.proofFileName,
               }
             : e
         )
@@ -3181,6 +3215,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
           markApiEarningPaid(workspaceIdRef.current, id, {
             providerReference: providerReference.trim(),
             note,
+            ...extras,
           }),
         "Mark earning paid"
       );
