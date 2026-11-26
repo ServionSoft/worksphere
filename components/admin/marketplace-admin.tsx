@@ -103,7 +103,6 @@ export function MarketplaceAdmin() {
     deleteOpportunity,
     acceptQuotation,
     updateQuotationStatus,
-    confirmAssignment,
     rejectAssignment,
     resolveExtension,
     resolveTaskExtension,
@@ -775,7 +774,7 @@ export function MarketplaceAdmin() {
             {pendingAssignments.length > 0 ? (
               <SectionCard
                 title="Pending confirmation"
-                description="Confirm or reject assignments created from awarded bids"
+                description="Waiting for the developer to accept. Admin can cancel the award; only the developer can confirm."
               >
                 <div className="flex flex-col gap-3">
                   {pendingAssignments.map((assignment) => (
@@ -794,26 +793,22 @@ export function MarketplaceAdmin() {
                             )}{" "}
                             · due {formatShortDate(assignment.deadline)}
                           </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            After accept, eligible milestone tasks auto-assign to
+                            this developer.
+                          </p>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              confirmAssignment(assignment.id);
-                              toast.success("Assignment confirmed");
-                            }}
-                          >
-                            Confirm
-                          </Button>
+                          <Badge variant="secondary">Awaiting developer</Badge>
                           <Button
                             size="sm"
                             variant="destructive"
                             onClick={() => {
                               rejectAssignment(assignment.id);
-                              toast.success("Assignment rejected");
+                              toast.success("Assignment cancelled");
                             }}
                           >
-                            Reject
+                            Cancel award
                           </Button>
                         </div>
                       </div>
@@ -920,7 +915,7 @@ export function MarketplaceAdmin() {
 
             <SectionCard
               title="All assignments"
-              description={`${assignments.length} total`}
+              description={`${assignments.length} total · Sync tasks backfills eligible unassigned milestone tasks`}
               bodyClassName="p-0"
             >
               <div className="divide-y divide-border">
@@ -937,9 +932,56 @@ export function MarketplaceAdmin() {
                         {formatShortDate(assignment.deadline)}
                       </p>
                     </div>
-                    <Badge variant="outline" className="capitalize">
-                      {assignment.status.replaceAll("_", " ")}
-                    </Badge>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className="capitalize">
+                        {assignment.status.replaceAll("_", " ")}
+                      </Badge>
+                      {workspace?.id &&
+                      assignment.milestoneId &&
+                      [
+                        "not_started",
+                        "in_progress",
+                        "submitted",
+                        "revision_requested",
+                        "approved",
+                        "completed",
+                      ].includes(assignment.status) ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            void (async () => {
+                              try {
+                                const { assignApiAssignmentTasks } =
+                                  await import("@/lib/api/workspace-api");
+                                const summary = await assignApiAssignmentTasks(
+                                  workspace.id,
+                                  assignment.id
+                                );
+                                toast.success(
+                                  summary.warningNoTasks
+                                    ? "No tasks on milestone yet"
+                                    : `Assigned ${summary.assigned} task(s)`,
+                                  {
+                                    description: summary.warningNoTasks
+                                      ? undefined
+                                      : `${summary.skippedAlreadyOwned} already owned · ${summary.skippedInternal} internal`,
+                                  }
+                                );
+                              } catch (e) {
+                                toast.error(
+                                  e instanceof Error
+                                    ? e.message
+                                    : "Sync tasks failed"
+                                );
+                              }
+                            })();
+                          }}
+                        >
+                          Sync tasks
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
                 ))}
                 {assignments.length === 0 ? (

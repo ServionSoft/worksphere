@@ -994,8 +994,36 @@ export function acceptApiFixedOpportunity(
 }
 
 export function confirmApiAssignment(workspaceId: string, assignmentId: string) {
-  return apiFetch<DeveloperAssignment>(
-    `/api/workspaces/${workspaceId}/assignments/${assignmentId}/confirm`,
+  return apiFetch<{
+    id: string;
+    status: string;
+    taskAssignment?: {
+      assigned: number;
+      skippedAlreadyOwned: number;
+      skippedInternal: number;
+      eligibleTotal: number;
+      taskTotal: number;
+      warningNoTasks: boolean;
+    };
+  }>(`/api/workspaces/${workspaceId}/assignments/${assignmentId}/confirm`, {
+    method: "POST",
+    workspaceId,
+  });
+}
+
+export function assignApiAssignmentTasks(
+  workspaceId: string,
+  assignmentId: string
+) {
+  return apiFetch<{
+    assigned: number;
+    skippedAlreadyOwned: number;
+    skippedInternal: number;
+    eligibleTotal: number;
+    taskTotal: number;
+    warningNoTasks: boolean;
+  }>(
+    `/api/workspaces/${workspaceId}/assignments/${assignmentId}/assign-tasks`,
     { method: "POST", workspaceId }
   );
 }

@@ -65,20 +65,34 @@ export function DeveloperProjectDetail({ projectId }: { projectId: string }) {
   const allowed = developerProjects(projects, assignments, user, tasks);
   const project = allowed.find((p) => p.id === projectId);
 
+  const linkedAssignments = useMemo(
+    () =>
+      developerAssignments(assignments, user).filter(
+        (a) => a.projectId === projectId
+      ),
+    [assignments, user, projectId]
+  );
   const projectTasks = useMemo(
-    () => developerProjectTasks(tasks, projectId),
-    [tasks, projectId]
+    () =>
+      developerProjectTasks(tasks, projectId, {
+        assignments: linkedAssignments,
+        user,
+      }),
+    [tasks, projectId, linkedAssignments, user]
   );
   const myTasks = useMemo(
-    () => developerMyTasks(tasks, projectId, user),
-    [tasks, projectId, user]
+    () => developerMyTasks(tasks, projectId, user, linkedAssignments),
+    [tasks, projectId, user, linkedAssignments]
   );
-  const projectMilestones = developerProjectMilestones(milestones, projectId);
+  const projectMilestones = developerProjectMilestones(
+    milestones,
+    projectId,
+    linkedAssignments,
+    user,
+    tasks
+  );
   const projectDocs = developerProjectDocuments(documents, projectId);
   const feed = developerProjectActivity(activity, projectId);
-  const linkedAssignments = developerAssignments(assignments, user).filter(
-    (a) => a.projectId === projectId
-  );
   const linkedSubs = workSubmissions.filter(
     (w) =>
       linkedAssignments.some((a) => a.id === w.assignmentId) ||

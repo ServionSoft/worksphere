@@ -228,28 +228,101 @@ export function developerProjects(
   return [...projects].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }
 
-export function developerProjectTasks(tasks: Task[], projectId: string) {
+const ACTIVE_ASSIGNMENT_STATUSES = new Set([
+  "not_started",
+  "in_progress",
+  "submitted",
+  "revision_requested",
+  "approved",
+  "completed",
+]);
+
+/** Milestone IDs the developer owns via accepted marketplace assignments. */
+export function developerAssignedMilestoneIds(
+  assignments: DeveloperAssignment[],
+  user: SessionUser
+) {
+  const myDevId = user.developerId;
+  return new Set(
+    assignments
+      .filter(
+        (a) =>
+          a.milestoneId &&
+          ACTIVE_ASSIGNMENT_STATUSES.has(a.status) &&
+          (myDevId ? a.developerId === myDevId : true)
+      )
+      .map((a) => a.milestoneId as string)
+  );
+}
+
+export function developerProjectTasks(
+  tasks: Task[],
+  projectId: string,
+  opts?: {
+    assignments?: DeveloperAssignment[];
+    user?: SessionUser;
+  }
+) {
+  const assignedMilestoneIds =
+    opts?.assignments && opts?.user
+      ? developerAssignedMilestoneIds(opts.assignments, opts.user)
+      : null;
   return tasks
-    .filter((t) => t.projectId === projectId && !t.parentId)
+    .filter((t) => {
+      if (t.projectId !== projectId || t.parentId) return false;
+      if (!assignedMilestoneIds) return true;
+      if (opts?.user && isTaskAssignedToUser(t, opts.user)) return true;
+      return Boolean(t.milestoneId && assignedMilestoneIds.has(t.milestoneId));
+    })
     .sort((a, b) => a.order - b.order);
 }
 
 export function developerMyTasks(
   tasks: Task[],
   projectId: string,
-  user: SessionUser
+  user: SessionUser,
+  assignments: DeveloperAssignment[] = []
 ) {
-  return developerProjectTasks(tasks, projectId).filter((t) =>
-    isTaskAssignedToUser(t, user)
+  const milestoneIds = developerAssignedMilestoneIds(assignments, user);
+  return developerProjectTasks(tasks, projectId, { assignments, user }).filter(
+    (t) =>
+      isTaskAssignedToUser(t, user) ||
+      Boolean(t.milestoneId && milestoneIds.has(t.milestoneId))
   );
 }
 
 export function developerProjectMilestones(
   milestones: Milestone[],
-  projectId: string
+  projectId: string,
+  assignments: DeveloperAssignment[] = [],
+  user?: SessionUser,
+  tasks: Task[] = []
 ) {
+  const assignedIds = user
+    ? developerAssignedMilestoneIds(assignments, user)
+    : new Set<string>();
+  const directTaskMilestoneIds = new Set(
+    user
+      ? tasks
+          .filter(
+            (t) =>
+              t.projectId === projectId &&
+              t.milestoneId &&
+              isTaskAssignedToUser(t, user)
+          )
+          .map((t) => t.milestoneId as string)
+      : []
+  );
   return milestones
-    .filter((m) => m.projectId === projectId)
+    .filter((m) => {
+      if (m.projectId !== projectId) return false;
+      if (!user) return true;
+      if (assignedIds.size > 0 || directTaskMilestoneIds.size > 0) {
+        return assignedIds.has(m.id) || directTaskMilestoneIds.has(m.id);
+      }
+      // Trust server-scoped list when client has no local assignment links yet.
+      return true;
+    })
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }
 

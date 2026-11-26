@@ -143,6 +143,11 @@ export interface Task {
   estimatedHours?: number | null;
   deliverables?: string[];
   source?: "manual" | "ai";
+  workKind?:
+    | "developer_execution"
+    | "internal_admin"
+    | "internal_only"
+    | "excluded";
   adminEdited?: boolean;
   /** Parent project tasks default to client sign-off after admin. */
   requiresClientApproval?: boolean;
